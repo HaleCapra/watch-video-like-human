@@ -452,6 +452,11 @@ def extract_selected(ffmpeg: str, video: Path, staging: Path, mode: str, interva
            "-map", "[grid]", "-fps_mode", "vfr", "-f", "rawvideo", "auto_grid.raw"]
     proc = run(cmd, cwd=staging)
     if proc.returncode != 0:
+        # ffmpeg 7.1 and later end with an error when the selection matched no frame at all (for example
+        # --start past the end of the video); older ones ended normally. That is "no frames", not a failure.
+        nothing = "received no packets" in proc.stderr or "Could not open encoder before EOF" in proc.stderr
+        if nothing and not parse_showinfo(proc.stderr) and not list(staging.glob("auto_*.jpg")):
+            return []
         raise SystemExit(f"Frame extraction failed:\n{proc.stderr[-2000:]}")
     times = parse_showinfo(proc.stderr)
     scores_path = staging / "scores.txt"
