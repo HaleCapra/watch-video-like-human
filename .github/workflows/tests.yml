@@ -34,9 +34,28 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - uses: FedericoCarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
-        with:
-          ffmpeg-version: "7.0.2"
+      - name: ffmpeg 7.1.1 (Linux, the same static build the Docker image ships)
+        if: runner.os == 'Linux'
+        run: |
+          docker create --name ffmpeg-src mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c
+          sudo docker cp ffmpeg-src:/ffmpeg /usr/local/bin/ffmpeg
+          sudo docker cp ffmpeg-src:/ffprobe /usr/local/bin/ffprobe
+          docker rm ffmpeg-src
+      - name: ffmpeg 7.0.2 (Windows, from the builder's own GitHub release)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          FFMPEG_URL: https://github.com/GyanD/codexffmpeg/releases/download/7.0.2/ffmpeg-7.0.2-essentials_build.zip
+          FFMPEG_SHA256: ""   # filled in from the first run's output; empty = print only
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
+          Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sha256 $hash"
+          if ($env:FFMPEG_SHA256 -and ($hash -ne $env:FFMPEG_SHA256)) { throw "ffmpeg download does not match the fixed SHA-256" }
+          Expand-Archive -Path $zip -DestinationPath (Join-Path $env:RUNNER_TEMP "ffmpeg")
+          $bin = (Get-ChildItem (Join-Path $env:RUNNER_TEMP "ffmpeg") -Recurse -Filter ffmpeg.exe | Select-Object -First 1).DirectoryName
+          Add-Content -Path $env:GITHUB_PATH -Value $bin
       - name: Tool versions
         shell: bash
         run: |

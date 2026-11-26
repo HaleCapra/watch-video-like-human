@@ -4,9 +4,9 @@
 # calls these tools; Route B (browser) and Route C (recording) need the host itself.
 # Every version below is fixed on purpose. To move one, change it here and let CI rebuild and re-test.
 
-FROM mwader/static-ffmpeg:7.1.1 AS ffmpeg
+FROM mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c AS ffmpeg
 
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:44cf1793efa7c7a476bb0f2cff81443f4a072c90c1cb127e2924933daa3e8c64
 
 LABEL org.opencontainers.image.title="watch-video-like-human tools" \
       org.opencontainers.image.description="ffmpeg, yt-dlp, faster-whisper and the skill's scripts for Route 0 and Route A. No agent, no browser, no recorder." \
