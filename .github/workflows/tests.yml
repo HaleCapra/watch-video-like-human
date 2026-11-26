@@ -12,6 +12,10 @@ on:
         description: "Also run macOS (Apple silicon and Intel). Costs 10x minutes on a private repository."
         type: boolean
         default: true
+      linux_windows:
+        description: "Run Linux and Windows too (they already run on every pull request)."
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -23,6 +27,7 @@ concurrency:
 jobs:
   validate:
     name: validate (${{ matrix.os }})
+    if: github.event_name != 'workflow_dispatch' || inputs.linux_windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

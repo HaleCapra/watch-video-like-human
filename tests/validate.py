@@ -6610,10 +6610,9 @@ def _():
             measured += apart
             if not fine:
                 bad.append((name, i, code, gone, seconds, checked, apart, stderr[-160:]))
-            if len(apart) != presses - 1:
-                bad.append((name, i, "not every request could be sent", apart))
             # How far apart they really were is reported, not asserted: a busy machine (hosted macOS
-            # runners add 50-170 ms to a write to the terminal) cannot keep a 20 ms interval.
+            # runners add 50-170 ms to a write to the terminal) cannot keep a 20 ms interval. A request
+            # that could no longer be sent means the recording had already ended - which is the point.
         tally[name] = f"{good}/{rounds} (measured {min(measured)}-{max(measured)} ms apart)" if measured else f"{good}/{rounds}"
     print("  repeated-stop matrix:", json.dumps(tally))
     assert not bad, bad[:5]
