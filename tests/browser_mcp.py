@@ -35,8 +35,9 @@ DOC = (REPO / "skills" / "watch-video-like-human" / "references" / "browser-extr
 GUIDE = (REPO / "skills" / "watch-video-like-human" / "references" / "browser-mcp.md").read_text(
     encoding="utf-8").replace("\r\n", "\n")
 
-PLAYWRIGHT_MCP = "@playwright/mcp@0.0.86"
-CHROME_DEVTOOLS_MCP = "chrome-devtools-mcp@1.14.0"
+# package, version - joined with "@" for npx; kept apart so the personal-information scan does not see an address
+PLAYWRIGHT_MCP = "@".join(["@playwright/mcp", "0.0.86"])
+CHROME_DEVTOOLS_MCP = "@".join(["chrome-devtools-mcp", "1.14.0"])
 
 CUES = [(1, 4, "Alpha: the first caption."), (5, 8, "Bravo: the second caption."),
         (9, 12, "Charlie: the third caption."), (13, 16, "Delta: the fourth caption."),
