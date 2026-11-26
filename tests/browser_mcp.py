@@ -183,12 +183,27 @@ class Host:
                 print("[%s] %s takes: %s" % (self.name, needed, json.dumps(tools[needed].get("inputSchema", {}).get("properties", {}))[:900]))
 
             def js(code, timeout=120):
-                payload, is_error, raw = client.call(self.evaluate, {"function": code}, timeout=timeout)
+                payload, is_error, raw = client.call(self.evaluate, dict(target, function=code), timeout=timeout)
                 text = "\n".join(p.get("text", "") for p in (raw or {}).get("content") or [] if p.get("type") == "text")
                 assert not is_error, "[%s] the tool reported an error:\n%s\n%s" % (self.name, text[:1500], client.stderr_text())
                 return value_in(text), text
 
+            def said(raw):
+                return "\n".join(p.get("text", "") for p in (raw or {}).get("content") or [] if p.get("type") == "text")
+
+            target = {}
             payload, is_error, raw = client.call(self.navigate[0], dict(self.navigate[1], url=url), timeout=180)
+            opened = said(raw)
+            if "pageId" in tools[self.evaluate].get("inputSchema", {}).get("properties", {}):
+                # This server addresses pages by number: find the number of the page that shows our address.
+                listed = said(client.call("list_pages", {})[2]) if "list_pages" in tools else ""
+                print("[%s] after opening:\n%s\n[%s] pages:\n%s" % (self.name, opened[:600], self.name, listed[:600]))
+                for source in (opened, listed):
+                    found = re.findall(r"(\d+)\s*:\s*" + re.escape(url), source)
+                    if found:
+                        target = {"pageId": int(found[-1])}
+                        break
+                assert target, "[%s] could not tell which page shows %s" % (self.name, url)
             check("opens the test page", not is_error, json.dumps(payload)[:800] + client.stderr_text())
 
             value, text = js("async () => { await new Promise(r => setTimeout(r, 50)); return { awaited: true }; }")
@@ -254,7 +269,7 @@ def main():
         "chrome-devtools": Host("Chrome DevTools MCP",
                                 [npx, "-y", CHROME_DEVTOOLS_MCP, "--headless", "--isolated",
                                  *(["--chrome-arg=--no-sandbox"] if extra else [])],
-                                ("navigate_page", {"type": "url"}), "evaluate_script"),
+                                ("new_page", {}), "evaluate_script"),
     }
     chosen = list(hosts) if args.host == "all" else [args.host]
 
