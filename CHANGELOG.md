@@ -1,5 +1,27 @@
 # Changelog
 
+## 5.5.0 (in progress)
+
+The agent stays on the host and coordinates; Docker is a toolbox with no agent in it; MCP is the
+way in. The skill's own behaviour and version number are unchanged so far.
+
+- **CI** (`.github/workflows/`): `tests/validate.py` on Linux and Windows for every pull request,
+  macOS (Apple silicon and Intel) when started by hand, with `mlx-whisper` really transcribing on
+  Apple silicon.
+- **Docker image** (`ghcr.io/halecapra/watch-video-like-human`): ffmpeg, yt-dlp, faster-whisper and
+  the scripts for Route 0 and Route A. No agent, no browser, no recorder. Built, tested and pushed
+  by GitHub Actions; every version fixed.
+- **MCP server** (`server/mcp_server.py`, stdio): the scripts as tools, on the host or in the image
+  (`wvlh mcp`). Paths cannot leave the work root, no shell command is built, no browser login is
+  read, nothing is installed, nothing is recorded. Every result says which evidence channel it
+  belongs to and what it does not prove. The MCP SDK is needed by this file only.
+- **Route B through a browser MCP** (`references/browser-mcp.md`): how the existing snippets go
+  into Claude in Chrome, Playwright MCP and Chrome DevTools MCP - one wrapper, the pieces for long
+  replies, the envelopes side by side. CI runs the Rung 2 and Rung 3 snippets through Playwright
+  MCP and Chrome DevTools MCP on a local test page.
+- `extract_media_assets.py`: a selection that matches no frame (`--start` past the end) gives no
+  frames instead of an error on ffmpeg 7.1 and later, as it always did on older ffmpeg.
+
 ## 5.4.0
 
 After real-video tests of 5.3 on Windows, macOS and Linux. Includes the macOS 5.3.1 field patch

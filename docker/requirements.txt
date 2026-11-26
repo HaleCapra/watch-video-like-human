@@ -1,3 +1,5 @@
-# Fixed on purpose. The packages these two pull in are printed by CI ("What is inside").
+# Fixed on purpose. The packages these pull in are printed by CI ("What is inside").
 yt-dlp==2026.11.23
 faster-whisper==1.2.1
+# For `wvlh mcp` only (the same line as server/requirements.txt).
+mcp==2.3.0

@@ -1,0 +1,2 @@
+# Needed only by server/mcp_server.py (Python 3.11 or later). The skill itself is standard library only.
+mcp==2.3.0

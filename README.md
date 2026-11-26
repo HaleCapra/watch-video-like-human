@@ -199,6 +199,97 @@ files belong to you. The speech model is downloaded on first use into `/cache`. 
 DIR` runs Route 0 from end to end as a self-check. Versions are fixed in `Dockerfile` and
 `docker/requirements.txt`; the image is built and tested by GitHub Actions, never on your machine.
 
+### MCP: the same tools, callable by any agent
+
+`server/mcp_server.py` is an MCP server (stdio). It adds nothing of its own: each tool starts one
+of the skill's scripts and returns what the script printed, as JSON. The agent still reads
+`SKILL.md` and still decides what the evidence allows it to say.
+
+| Tool | Script behind it |
+|---|---|
+| `about` | - (work root, tools, what is not offered) |
+| `probe_capabilities` | `probe_capabilities.py --json` |
+| `setup_plan` | `setup_tools.py --json` - the plan only; nothing is ever installed through MCP |
+| `fetch_media` | `fetch_media.py` (Route A; info, captions, audio or video) |
+| `extract_media_assets` | `extract_media_assets.py` |
+| `transcribe_local` | `transcribe_local.py` |
+| `align_transcript_frames` | `align_transcript_frames.py` |
+| `read_transcript` | `read_transcript.py --json` |
+| `normalize_transcript` | `normalize_transcript.py` |
+| `evidence_manifest_init` / `_route` / `_add` / `_rate` / `_verify` / `_render` / `_lint` | `evidence_manifest.py` |
+
+Every result has an `evidence` note that names the channel and what the result does **not**
+prove: frames written are not frames seen, captions read are neither watched nor heard. The
+disclosure block still comes from `evidence_manifest_render` and from nowhere else.
+
+**Run it on the machine itself** (needs the scripts' own tools, plus the MCP SDK for this one file):
+
+```
+python -m pip install -r server/requirements.txt        # Python 3.11 or later; only the server needs it
+python server/mcp_server.py --root /path/to/work
+```
+
+**Or run it in the Docker image** (the SDK, ffmpeg, yt-dlp and faster-whisper are already inside):
+
+```
+docker run -i --rm -v /path/to/work:/work -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest mcp
+```
+
+The work root (`--root`, or `/work` in the image) is the only folder the tools may read or write.
+Paths are given relative to it, so the same call works in both setups.
+
+Claude Code:
+
+```
+claude mcp add watch-video -- python /path/to/repo/server/mcp_server.py --root /path/to/work
+claude mcp add watch-video -- docker run -i --rm -v /path/to/work:/work -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest mcp
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.watch-video]
+command = "python"
+args = ["/path/to/repo/server/mcp_server.py", "--root", "/path/to/work"]
+
+# or, with Docker
+[mcp_servers.watch-video]
+command = "docker"
+args = ["run", "-i", "--rm", "-v", "/path/to/work:/work", "-v", "wvlh-cache:/cache",
+        "ghcr.io/halecapra/watch-video-like-human:latest", "mcp"]
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "watch-video": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/path/to/work:/work", "-v", "wvlh-cache:/cache",
+               "ghcr.io/halecapra/watch-video-like-human:latest", "mcp"]
+    }
+  }
+}
+```
+
+(For the local form use `"command": "python"` and `"args": ["/path/to/repo/server/mcp_server.py",
+"--root", "/path/to/work"]`. On Windows write paths as `C:/...`.)
+
+What the server will not do:
+
+- **Leave the work root.** A path outside it is refused before any script starts, links included.
+- **Build a shell command.** Scripts are started with a list of arguments; every value travels as
+  `--option=value`, so text can never turn into another option.
+- **Read a browser's login state.** `fetch_media` has no such parameter here. The address goes to
+  yt-dlp and nowhere else.
+- **Install anything** (`setup_plan` prints the plan) **or upload audio** (no cloud tool).
+- **Record the screen.** Route C captures your own screen and sound: the agent runs
+  `record_browser_playback.py` on the host itself, with you there.
+- **Drive a browser.** Route B uses the browser tool the agent already has; how the snippets go
+  into Claude in Chrome, Playwright MCP and Chrome DevTools MCP is in
+  `skills/watch-video-like-human/references/browser-mcp.md`.
+
 ### Where it cannot work
 
 - **Chat-only assistants with no tools.** The skill needs to run commands and open images.
@@ -253,7 +344,7 @@ python tools/check_personal_info.py .    # no local paths, emails or keys in the
 python tools/build_zip.py                # dist/watch-video-like-human-<version>.zip
 ```
 
-GitHub Actions runs `tests/validate.py` on Linux and Windows for every pull request (`.github/workflows/tests.yml`; macOS, Apple silicon and Intel, only when started by hand) and builds and tests the Docker image (`.github/workflows/docker.yml`).
+GitHub Actions runs `tests/validate.py` and `tests/test_mcp_server.py` on Linux and Windows for every pull request (`.github/workflows/tests.yml`; macOS, Apple silicon and Intel, only when started by hand), runs Route B snippets through Playwright MCP and Chrome DevTools MCP on a local test page (`tests/browser_mcp.py`), and builds and tests the Docker image, including Route 0 through its `mcp` entry (`.github/workflows/docker.yml`).
 
 ### Credits
 
@@ -398,6 +489,86 @@ docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-vid
 
 脚本按名字调用（不带 `.py`），参数和 `SKILL.md` 里一样；路径写容器里的（`/work/...`）。Linux 上加 `--user "$(id -u):$(id -g)"`，生成的文件才归你。语音模型第一次用时下载到 `/cache`。`smoke VIDEO --work DIR` 会把路线 0 从头到尾跑一遍，用来自检。版本固定在 `Dockerfile` 和 `docker/requirements.txt` 里；镜像由 GitHub Actions 构建和测试，不在你的电脑上构建。
 
+### MCP：同一套工具，任何助手都能直接调用
+
+`server/mcp_server.py` 是一个 MCP 服务（stdio）。它自己不添任何逻辑：每个工具启动 skill 里的一个脚本，把脚本打印的内容按 JSON 交回。助手仍然读 `SKILL.md`，证据够不够说某句话，仍然由助手判断。
+
+| 工具 | 背后的脚本 |
+|---|---|
+| `about` | 无（工作目录、工具清单、哪些不提供） |
+| `probe_capabilities` | `probe_capabilities.py --json` |
+| `setup_plan` | `setup_tools.py --json`，只列计划；MCP 里永远不安装任何东西 |
+| `fetch_media` | `fetch_media.py`（路线 A：信息、字幕、音频或视频） |
+| `extract_media_assets` | `extract_media_assets.py` |
+| `transcribe_local` | `transcribe_local.py` |
+| `align_transcript_frames` | `align_transcript_frames.py` |
+| `read_transcript` | `read_transcript.py --json` |
+| `normalize_transcript` | `normalize_transcript.py` |
+| `evidence_manifest_init` / `_route` / `_add` / `_rate` / `_verify` / `_render` / `_lint` | `evidence_manifest.py` |
+
+每个结果都带一条 `evidence` 说明：它属于哪个通道，以及它**不能**证明什么。抽出来的帧不等于看过，读到的字幕既不是看过也不是听过。披露块仍然只由 `evidence_manifest_render` 生成。
+
+**在本机直接跑**（需要脚本自己用到的工具，另外这一个文件需要 MCP SDK）：
+
+```
+python -m pip install -r server/requirements.txt        # Python 3.11 及以上；只有这个服务需要
+python server/mcp_server.py --root /path/to/work
+```
+
+**或者在 Docker 镜像里跑**（SDK、ffmpeg、yt-dlp、faster-whisper 都已装好）：
+
+```
+docker run -i --rm -v /path/to/work:/work -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest mcp
+```
+
+工作目录（`--root`，镜像里是 `/work`）是工具唯一能读写的文件夹。路径都相对它来写，所以两种跑法用同样的调用。
+
+Claude Code：
+
+```
+claude mcp add watch-video -- python /path/to/repo/server/mcp_server.py --root /path/to/work
+claude mcp add watch-video -- docker run -i --rm -v /path/to/work:/work -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest mcp
+```
+
+Codex（`~/.codex/config.toml`）：
+
+```toml
+[mcp_servers.watch-video]
+command = "python"
+args = ["/path/to/repo/server/mcp_server.py", "--root", "/path/to/work"]
+
+# 或者用 Docker
+[mcp_servers.watch-video]
+command = "docker"
+args = ["run", "-i", "--rm", "-v", "/path/to/work:/work", "-v", "wvlh-cache:/cache",
+        "ghcr.io/halecapra/watch-video-like-human:latest", "mcp"]
+```
+
+Claude Desktop（`claude_desktop_config.json`）：
+
+```json
+{
+  "mcpServers": {
+    "watch-video": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/path/to/work:/work", "-v", "wvlh-cache:/cache",
+               "ghcr.io/halecapra/watch-video-like-human:latest", "mcp"]
+    }
+  }
+}
+```
+
+（本机跑法把 `"command"` 换成 `"python"`，`"args"` 换成 `["/path/to/repo/server/mcp_server.py", "--root", "/path/to/work"]`。Windows 上路径写成 `C:/...`。）
+
+这个服务不做的事：
+
+- **不出工作目录。** 目录之外的路径在启动任何脚本之前就被拒绝，链接也一样。
+- **不拼 shell 命令。** 脚本用参数列表直接启动，每个值都以 `--选项=值` 的形式传递，文字不可能变成另一个选项。
+- **不读浏览器的登录状态。** 这里的 `fetch_media` 没有这个参数。网址只交给 yt-dlp。
+- **不安装任何东西**（`setup_plan` 只列计划），**也不上传音频**（没有云端识别工具）。
+- **不录屏。** 路线 C 录的是你自己的屏幕和声音：由助手在本机直接运行 `record_browser_playback.py`，而且你在场。
+- **不操作浏览器。** 路线 B 用助手已有的浏览器工具；这些片段怎样放进 Claude in Chrome、Playwright MCP、Chrome DevTools MCP，见 `skills/watch-video-like-human/references/browser-mcp.md`。
+
 ### 哪些环境用不了
 
 - **没有工具的纯聊天助手**：这个技能需要运行命令和打开图片。
@@ -433,7 +604,7 @@ python tools/check_personal_info.py .    # 仓库里不能有本机路径、邮�
 python tools/build_zip.py                # 生成 dist/watch-video-like-human-<版本>.zip
 ```
 
-每个 PR 由 GitHub Actions 在 Linux 和 Windows 上跑 `tests/validate.py`（`.github/workflows/tests.yml`；macOS 的 Apple 芯片和 Intel 只在手动触发时跑），并构建、测试 Docker 镜像（`.github/workflows/docker.yml`）。
+每个 PR 由 GitHub Actions 在 Linux 和 Windows 上跑 `tests/validate.py` 和 `tests/test_mcp_server.py`（`.github/workflows/tests.yml`；macOS 的 Apple 芯片和 Intel 只在手动触发时跑），用 Playwright MCP 和 Chrome DevTools MCP 在本地测试页上跑路线 B 的片段（`tests/browser_mcp.py`），并构建、测试 Docker 镜像，包括经它的 `mcp` 入口跑一遍路线 0（`.github/workflows/docker.yml`）。
 
 ### 致谢
 
