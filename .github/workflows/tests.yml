@@ -1,0 +1,88 @@
+name: tests
+
+# Linux and Windows run on every pull request and on main.
+# macOS runs only when started by hand: on a private repository its minutes count 10x.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: "Also run macOS (Apple silicon and Intel). Costs 10x minutes on a private repository."
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: FedericoCarboni/setup-ffmpeg@37062fbf7149fc5578d6c57e08aed62458b375d6 # v3.1
+        with:
+          ffmpeg-version: "7.0.2"
+      - name: Tool versions
+        shell: bash
+        run: |
+          python --version
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+          node --version
+      - name: No personal information in the tree
+        run: python -I -B tools/check_personal_info.py
+      - name: tests/validate.py
+        run: python -I -B tests/validate.py
+
+  macos:
+    name: validate (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' && inputs.macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]   # Apple silicon, Intel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: ffmpeg 7 (Homebrew)
+        run: |
+          brew install ffmpeg@7
+          echo "$(brew --prefix ffmpeg@7)/bin" >> "$GITHUB_PATH"
+      - name: Tool versions
+        run: |
+          uname -m
+          python --version
+          ffmpeg -version | head -1
+          node --version
+      - name: tests/validate.py
+        run: python -I -B tests/validate.py
+      - name: mlx-whisper really transcribes (Apple silicon only)
+        if: matrix.os == 'macos-15'
+        run: |
+          python -m venv "$RUNNER_TEMP/mlx"
+          "$RUNNER_TEMP/mlx/bin/python" -m pip install --quiet "mlx-whisper==0.4.3"
+          say -o "$RUNNER_TEMP/speech.aiff" "This is a short test video. It checks that the tools work together."
+          ffmpeg -y -loglevel error -f lavfi -i "testsrc2=s=640x360:d=8:r=10" -i "$RUNNER_TEMP/speech.aiff" \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -af apad -shortest "$RUNNER_TEMP/sample.mp4"
+          "$RUNNER_TEMP/mlx/bin/python" -I -B skills/watch-video-like-human/scripts/transcribe_local.py --list
+          "$RUNNER_TEMP/mlx/bin/python" -I -B tools/route0_smoke.py "$RUNNER_TEMP/sample.mp4" --work "$RUNNER_TEMP/route0" \
+            --backend mlx-whisper --model tiny --expect test --expect video --expect tools

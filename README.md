@@ -170,6 +170,35 @@ An agent needs four abilities: run a local command, look at an image file, optio
 browser page, and ask you a question. `skills/watch-video-like-human/references/hosts.md` maps
 these to common hosts.
 
+### Docker: the tools in a box (Route 0 and Route A only)
+
+There is also a container image with ffmpeg, yt-dlp, faster-whisper and the skill's scripts. It is a
+toolbox, not an assistant: your agent stays on your computer, reads `SKILL.md` there, and calls the
+tools in the container. Use it when you do not want to install ffmpeg, yt-dlp or a speech
+recogniser on the machine. The local install and the Docker image can be used side by side.
+
+- **In the image:** Route 0 (a file you have) and Route A (allowed yt-dlp retrieval).
+- **Not in the image, and they cannot be:** Route B needs your own browser, Route C records your
+  own screen and sound. Both run on the host only. The image has no browser, no recorder, and no
+  agent framework of any kind.
+
+```
+docker pull ghcr.io/halecapra/watch-video-like-human:latest      # private: `docker login ghcr.io` first
+docker run --rm ghcr.io/halecapra/watch-video-like-human:latest help
+
+# Route 0 on a file in the current folder; results land in ./out, speech models are kept in a volume
+docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest \
+    extract_media_assets /work/video.mp4 --out-dir /work/out
+docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest \
+    transcribe_local /work/out/audio.wav --language en
+```
+
+Every script is called by its name without `.py`, with the same arguments as in `SKILL.md`; paths
+are the ones inside the container (`/work/...`). On Linux add `--user "$(id -u):$(id -g)"` so the
+files belong to you. The speech model is downloaded on first use into `/cache`. `smoke VIDEO --work
+DIR` runs Route 0 from end to end as a self-check. Versions are fixed in `Dockerfile` and
+`docker/requirements.txt`; the image is built and tested by GitHub Actions, never on your machine.
+
 ### Where it cannot work
 
 - **Chat-only assistants with no tools.** The skill needs to run commands and open images.
@@ -223,6 +252,8 @@ python tests/validate.py                 # every check must pass; needs ffmpeg/f
 python tools/check_personal_info.py .    # no local paths, emails or keys in the tree
 python tools/build_zip.py                # dist/watch-video-like-human-<version>.zip
 ```
+
+GitHub Actions runs `tests/validate.py` on Linux and Windows for every pull request (`.github/workflows/tests.yml`; macOS, Apple silicon and Intel, only when started by hand) and builds and tests the Docker image (`.github/workflows/docker.yml`).
 
 ### Credits
 
@@ -347,6 +378,26 @@ npx skills add <owner>/<repo>
 
 助手需要四种能力：运行本地命令、查看图片文件、（可选）操作浏览器页面、向你提问。各家助手对应什么工具，见 `skills/watch-video-like-human/references/hosts.md`。
 
+### Docker：把工具装进盒子（只管路线 0 和路线 A）
+
+另有一个容器镜像，里面是 ffmpeg、yt-dlp、faster-whisper 和本 skill 的脚本。它是工具箱，不是助手：助手仍然在你自己的电脑上运行、在那里读 `SKILL.md`，需要时调用容器里的工具。不想在本机装 ffmpeg、yt-dlp、语音识别时用它。本机版和 Docker 版可以并存。
+
+- **镜像里有：** 路线 0（你手里的文件）和路线 A（允许的 yt-dlp 获取）。
+- **镜像里没有，也放不进去：** 路线 B 要用你自己的浏览器，路线 C 录的是你自己的屏幕和声音，这两条只能在本机跑。镜像里没有浏览器、没有录屏、没有任何助手框架。
+
+```
+docker pull ghcr.io/halecapra/watch-video-like-human:latest      # 私有镜像，先 `docker login ghcr.io`
+docker run --rm ghcr.io/halecapra/watch-video-like-human:latest help
+
+# 对当前文件夹里的文件跑路线 0；结果在 ./out，语音模型存在卷里
+docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest \
+    extract_media_assets /work/video.mp4 --out-dir /work/out
+docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-video-like-human:latest \
+    transcribe_local /work/out/audio.wav --language zh
+```
+
+脚本按名字调用（不带 `.py`），参数和 `SKILL.md` 里一样；路径写容器里的（`/work/...`）。Linux 上加 `--user "$(id -u):$(id -g)"`，生成的文件才归你。语音模型第一次用时下载到 `/cache`。`smoke VIDEO --work DIR` 会把路线 0 从头到尾跑一遍，用来自检。版本固定在 `Dockerfile` 和 `docker/requirements.txt` 里；镜像由 GitHub Actions 构建和测试，不在你的电脑上构建。
+
 ### 哪些环境用不了
 
 - **没有工具的纯聊天助手**：这个技能需要运行命令和打开图片。
@@ -381,6 +432,8 @@ python tests/validate.py                 # 必须全部通过；需要 ffmpeg/ff
 python tools/check_personal_info.py .    # 仓库里不能有本机路径、邮箱、Key
 python tools/build_zip.py                # 生成 dist/watch-video-like-human-<版本>.zip
 ```
+
+每个 PR 由 GitHub Actions 在 Linux 和 Windows 上跑 `tests/validate.py`（`.github/workflows/tests.yml`；macOS 的 Apple 芯片和 Intel 只在手动触发时跑），并构建、测试 Docker 镜像（`.github/workflows/docker.yml`）。
 
 ### 致谢
 

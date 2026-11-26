@@ -5113,7 +5113,9 @@ const document = { querySelector(s) { return (%(has_item)s && s === '.bpx-player
 @check("v5.4 WSL round 4: uv gets patient network settings (never overriding the user's), a long step says it is still running, a failure says it can simply be re-run")
 def _():
     assert setup_mod.UV_ENV == {"UV_HTTP_TIMEOUT": "300", "UV_HTTP_RETRIES": "8"}
-    assert setup_mod.is_uv(["/opt/tools/bin/uv", "pip"]) and setup_mod.is_uv(["C:\\t\\bin\\UV.EXE", "venv"])
+    assert setup_mod.is_uv(["/opt/tools/bin/uv", "pip"]) and setup_mod.is_uv(["UV.EXE", "venv"])
+    if os.name == "nt":      # a backslash separates folders only on Windows
+        assert setup_mod.is_uv(["C:\\t\\bin\\UV.EXE", "venv"])
     assert not setup_mod.is_uv(["/usr/bin/python3", "-m", "pip"]) and not setup_mod.is_uv(["uvx"]) and not setup_mod.is_uv(None)
     clean = {k: v for k, v in os.environ.items() if not k.startswith("UV_HTTP")}
     with patch.dict(os.environ, clean, clear=True):

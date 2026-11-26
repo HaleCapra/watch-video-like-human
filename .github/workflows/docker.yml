@@ -1,0 +1,98 @@
+name: docker
+
+# Builds the tools-only image (Route 0 and Route A), runs Route 0 inside it, then pushes it to GHCR.
+# Only GITHUB_TOKEN is used. The package stays private, like the repository.
+on:
+  pull_request:
+    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", tools/route0_smoke.py, .github/workflows/docker.yml]
+  push:
+    branches: [main]
+    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", tools/route0_smoke.py, .github/workflows/docker.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/halecapra/watch-video-like-human
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+      - name: Build (not pushed yet)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: wvlh:ci
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Base images that were used
+        run: |
+          docker buildx imagetools inspect mwader/static-ffmpeg:7.1.1 | head -4
+          docker buildx imagetools inspect python:3.12-slim-bookworm | head -4
+      - name: What is inside
+        run: |
+          docker run --rm wvlh:ci help
+          docker run --rm wvlh:ci ffmpeg -version | head -1
+          docker run --rm wvlh:ci yt-dlp --version
+          docker run --rm --entrypoint python wvlh:ci -m pip freeze
+          docker run --rm --entrypoint id wvlh:ci
+      - name: A sample video with speech
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng >/dev/null
+          mkdir -p ci-work ci-cache && chmod 777 ci-work ci-cache
+          espeak-ng -v en-us -s 140 -w ci-work/speech.wav "This is a short test video. It checks that the tools work together."
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" wvlh:ci ffmpeg -y -loglevel error \
+            -f lavfi -i "testsrc2=s=640x360:d=8:r=10" -i /work/speech.wav \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -af apad -shortest /work/sample.mp4
+      - name: Speech model cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ci-cache
+          key: faster-whisper-1.2.1-tiny
+      - name: Route 0 inside the container
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" -v "$PWD/ci-cache:/cache" wvlh:ci \
+            smoke /work/sample.mp4 --work /work/out --model tiny --expect test --expect video --expect tools
+      - name: Image size
+        run: |
+          bytes=$(docker image inspect wvlh:ci --format '{{.Size}}')
+          echo "Image size (unpacked): $((bytes / 1000000)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+          docker history --format '{{.Size}}  {{.CreatedBy}}' wvlh:ci | cut -c1-150
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+      - name: Pushed
+        run: |
+          echo "Pushed, digest ${{ steps.push.outputs.digest }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" | tee -a "$GITHUB_STEP_SUMMARY"
