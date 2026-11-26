@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         env:
           FFMPEG_URL: https://github.com/GyanD/codexffmpeg/releases/download/7.0.2/ffmpeg-7.0.2-essentials_build.zip
-          FFMPEG_SHA256: ""   # filled in from the first run's output; empty = print only
+          FFMPEG_SHA256: d5308d30872b2739cf53169df61faba8639d39a19b20b91e611c177ef676f64c
         run: |
           $zip = Join-Path $env:RUNNER_TEMP "ffmpeg.zip"
           Invoke-WebRequest -Uri $env:FFMPEG_URL -OutFile $zip
