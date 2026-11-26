@@ -1,0 +1,20 @@
+{
+  "name": "watch-video-like-human",
+  "metadata": {
+    "description": "One skill: watch a video through four routes and disclose the real visual, audio and alignment evidence."
+  },
+  "owner": {
+    "name": "watch-video-like-human contributors"
+  },
+  "plugins": [
+    {
+      "name": "watch-video-like-human",
+      "description": "Watch any video the user can legitimately play and report honestly what was actually seen, heard or only read.",
+      "author": {
+        "name": "watch-video-like-human contributors"
+      },
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

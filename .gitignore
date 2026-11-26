@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+
+# build output
+dist/
+
+# test output
+validation-result.json
+tests/validation-result.json
+
+# never commit keys or local settings
+.env
+.env.*
+*.key
+
+# products of running the skill (videos, frames, audio, transcripts)
+video-assets/
+video-work/
+WORK/
+work/
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.wav
+*.mp3
+
+# editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

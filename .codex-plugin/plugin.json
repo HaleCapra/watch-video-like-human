@@ -1,0 +1,38 @@
+{
+  "name": "watch-video-like-human",
+  "version": "5.4.0",
+  "description": "Watch any video the user can legitimately play - a local file, a download, in-browser extraction, or screen recording - and report honestly what was actually seen, heard or only read.",
+  "author": {
+    "name": "watch-video-like-human contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "video",
+    "transcript",
+    "captions",
+    "frames",
+    "ffmpeg",
+    "yt-dlp",
+    "whisper",
+    "notes",
+    "evidence",
+    "agent-skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Watch Video Like Human",
+    "shortDescription": "Give the agent a video and get an answer that says what was really seen, heard or only read.",
+    "longDescription": "Four routes to the material (a file you have, a permitted download, in-browser caption and frame extraction, screen plus loopback recording), keyframes with real timestamps, full-transcript reading, region crops, and an evidence manifest that turns into a disclosure block at the top of every answer.",
+    "developerName": "watch-video-like-human contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Watch this video and tell me what happens around 02:30: <path or URL>",
+      "Take complete study notes from this lecture recording: <path>",
+      "Read the captions of <URL> and summarize it - no download needed"
+    ]
+  }
+}
