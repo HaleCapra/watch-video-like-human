@@ -95,7 +95,7 @@ jobs:
       - name: tests/validate.py
         run: python -I -B tests/validate.py
       - name: mlx-whisper really transcribes (Apple silicon only)
-        if: matrix.os == 'macos-15'
+        if: ${{ !cancelled() && matrix.os == 'macos-15' }}   # also when a check above failed: it is a separate question
         run: |
           python -m venv "$RUNNER_TEMP/mlx"
           "$RUNNER_TEMP/mlx/bin/python" -m pip install --quiet "mlx-whisper==0.4.3"
