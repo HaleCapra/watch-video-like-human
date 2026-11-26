@@ -199,7 +199,7 @@ class Host:
                 listed = said(client.call("list_pages", {})[2]) if "list_pages" in tools else ""
                 print("[%s] after opening:\n%s\n[%s] pages:\n%s" % (self.name, opened[:600], self.name, listed[:600]))
                 for source in (opened, listed):
-                    found = re.findall(r"(\d+)\s*:\s*" + re.escape(url), source)
+                    found = re.findall(r"(?m)^\s*(\d+)\s*:[^\n]*" + re.escape(url), source)   # "2: title (address) [selected]"
                     if found:
                         target = {"pageId": int(found[-1])}
                         break
