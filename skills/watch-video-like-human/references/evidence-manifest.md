@@ -162,7 +162,9 @@ python scripts/evidence_manifest.py pack -m $M --output WORK/review.zip        #
   lines, claims and open questions in time order, the contact sheets, and the recorded files.
   Every frame carries its state - opened at full size, seen only as a tile, extracted and not
   opened - by the rule `verify` uses, and a manifest that does not verify is shown as such. The
-  pictures are inside the file (`--link-pictures` links them instead); a video that is on the
+  pictures are inside the file, up to 25 MB of them (`--max-embed-mb`; past it the opened ones go in
+  first, the rest are named but not shown, and the command says so - `--link-pictures` links every
+  picture beside the page instead); a video that is on the
   machine is linked relatively and its times become buttons (`--no-video`, `--video FILE`). The
   page loads nothing from the network and holds no folder of the machine; everything from the
   manifest and the transcripts is shown as text, never used as markup.

@@ -16,6 +16,8 @@ version number and its existing behaviour are unchanged so far.
   a timeline of frames, transcript or caption lines, claims and open questions, a player when the
   video is on the machine. Every frame is marked opened / seen as a tile / not opened by the rule
   `verify` uses. No network, no CDN, no folder of the machine; text from the manifest is escaped.
+  Pictures are inside the file up to 25 MB (`--max-embed-mb`), opened ones first; `--link-pictures`
+  for large sets.
 - **Review pack** (`evidence_manifest.py pack`): the page, a copy of the manifest with relative
   paths, the pictures that were opened or cited and the transcripts in one zip. No video unless
   `--include-video`. Texts are checked for local paths, email addresses and keys first; with

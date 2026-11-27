@@ -1473,10 +1473,13 @@ def view_page(manifest: dict, manifest_path: Path, picture, video_href: str | No
     def badge(state: str) -> str:
         return f'<span class="badge {state}">{esc(SEEN_LABELS[state])}</span>'
 
+    why_not = getattr(picture, "why", None)
+
     def shown(record: dict, css: str, alt: str) -> str:
         src = picture(record)
         if not src:
-            return f'<div class="gone">{esc(alt)}: the picture is not here</div>'
+            reason = (why_not(record) if why_not else None) or "the picture is not here"
+            return f'<div class="gone">{esc(alt)}: {esc(reason)}</div>'
         return f'<img class="{css}" loading="lazy" alt="{esc(alt)}" src="{html.escape(src, quote=True)}">'
 
     ratings = manifest.get("ratings") or {}
@@ -1531,8 +1534,7 @@ def view_page(manifest: dict, manifest_path: Path, picture, video_href: str | No
     rows: list[tuple[float, int, str]] = []
     for frame in frames:
         state = status.get(frame.get("id"), "not-opened")
-        cell = (shown(frame, "frame", f"frame {frame.get('id')}") if state != "not-opened" or picture(frame)
-                else f'<div class="gone">{esc(frame.get("id"))}: the picture is not here</div>')
+        cell = shown(frame, "frame", f"frame {frame.get('id')}")
         rows.append((frame["time_seconds"], 0,
                      f'<tr class="row-frame" data-seen="{state}"><td>{stamp(frame["time_seconds"])}</td>'
                      f'<td><span class="kind">frame</span><br><span class="t">{esc(frame.get("id"))}</span></td>'
@@ -1690,10 +1692,30 @@ def cmd_view(args) -> int:
             if video is None else
             "The video is on another drive than this page and cannot be linked relatively. Times are shown as text.")
     embedded = {"bytes": 0, "pictures": 0}
+    if args.max_embed_mb < 0:
+        raise SystemExit("--max-embed-mb must be 0 or greater (0 = no limit).")
+    budget = int(args.max_embed_mb * 1024 * 1024) or None
+    left_out: set[str] = set()
+    if budget and not args.link_pictures:
+        # Decide before writing what fits: pictures that were opened first, then tiles' frames, then the rest.
+        status_now = seen_status(manifest)
+        order = {"opened": 0, "tile": 1, "not-opened": 2}
+        records = (all_sheets(manifest) + all_crops(manifest) + of_kind(manifest, "screenshot") + all_frames(manifest))
+        records.sort(key=lambda r: order[status_now.get(r.get("id"), "not-opened")])     # stable: keeps time order
+        used = 0
+        for record in records:
+            found = locate(record, path)
+            if found is None:
+                continue
+            size = found.stat().st_size
+            if used + size > budget:
+                left_out.add(record.get("id"))
+            else:
+                used += size
 
     def picture(record: dict) -> str | None:
         found = locate(record, path)
-        if found is None:
+        if found is None or record.get("id") in left_out:
             return None
         if args.link_pictures:
             return relative_href(found, output.parent)
@@ -1701,13 +1723,22 @@ def cmd_view(args) -> int:
         embedded["pictures"] += 1
         return data_uri(found)
 
+    picture.why = lambda record: ("left out of this file to keep it small (the picture is on disk; "
+                                  "make the page with --link-pictures to see every one)"
+                                  if record.get("id") in left_out else None)
+    if left_out:
+        print(f"NOTE: {len(left_out)} picture(s) were left out of the page to keep it under "
+              f"{args.max_embed_mb:g} MB of pictures (opened ones were put in first). Use --link-pictures to "
+              "link every picture beside the page, or raise --max-embed-mb (0 = no limit).", file=sys.stderr)
+
     page = view_page(manifest, path, picture, href, note,
                      "pictures linked beside this page" if args.link_pictures else "pictures inside this file", locate)
     output.write_text(page, encoding="utf-8")
     status = seen_status(manifest)
     frame_ids = [f.get("id") for f in all_frames(manifest)]
     print(json.dumps({"view": str(output), "bytes": output.stat().st_size, "single_file": not args.link_pictures,
-                      "pictures_embedded": embedded["pictures"], "video_linked": bool(href),
+                      "pictures_embedded": embedded["pictures"], "pictures_left_out": len(left_out),
+                      "max_embed_mb": None if args.link_pictures else args.max_embed_mb, "video_linked": bool(href),
                       "frames": {state: sum(1 for i in frame_ids if status.get(i) == state) for state in SEEN_LABELS},
                       "verifies": not check(manifest, path)[0],
                       "note": "The page is a way to look at the record. It is not evidence, and opening it "
@@ -2321,6 +2352,9 @@ def main() -> int:
     p.add_argument("--link-pictures", action="store_true",
                    help="Link the pictures beside the page instead of putting them inside it (smaller file; "
                         "it then needs the pictures next to it).")
+    p.add_argument("--max-embed-mb", type=float, default=25.0,
+                   help="Most megabytes of pictures to put inside the page (default 25; 0 = no limit). Past it, "
+                        "pictures that were opened go in first and the rest are named but not shown.")
     p.set_defaults(fn=cmd_view)
 
     p = sub.add_parser("pack", help="Zip the view page, a copy of the manifest, the pictures used and the transcripts.")

@@ -219,7 +219,8 @@ python scripts/evidence_manifest.py pack -m WORK/evidence_manifest.json --output
 - **The view page.** One HTML file that opens offline: the disclosure, then a timeline with the
   frames, the transcript or caption lines, the claims and the open questions in time order. Every
   frame is marked *opened at full size*, *seen only as a tile of a contact sheet* or *extracted,
-  not opened* - by the same rule `verify` uses. If the video is on the machine the page plays it
+  not opened* - by the same rule `verify` uses. Pictures sit inside the file up to 25 MB
+  (`--max-embed-mb`); for hundreds of frames use `--link-pictures`. If the video is on the machine the page plays it
   and every time is a button. The page loads nothing from the network, and text from the manifest
   or the transcript is shown as text, never used as markup.
 - **The review pack.** A zip with the page, a copy of the manifest with relative paths, the
@@ -535,7 +536,7 @@ python scripts/evidence_manifest.py pack -m WORK/evidence_manifest.json --output
 ```
 
 - **关键帧拼图。** 把很多帧拼在一张图上，每格下面标着这帧的编号和时间（`#012 01:23.4`）。只用 ffmpeg；标签是脚本自己用点阵画的，不需要字体，也不加任何依赖。助手可以用几张图先扫一遍长视频，再去打开要紧的帧。打开过的拼图，里面的帧算「以缩略格看过」，披露里会照实写，并且和「原尺寸打开过的帧」分开计数。小字和细节仍然要打开那一帧本身或者裁剪图。没打开过的拼图什么都不算。
-- **查看页。** 一个离线就能打开的 HTML 文件：先是披露，然后是时间轴，按时间排着关键帧、转写或字幕行、论断和未决问题。每一帧都标明是「原尺寸打开过」「只在拼图里看过」还是「抽出来没打开」，口径和 `verify` 一致。视频在本机时页面可以直接播放，点时间就跳过去。页面不联网；清单和转写里的文字一律当文字显示，不会被当成标记执行。
+- **查看页。** 一个离线就能打开的 HTML 文件：先是披露，然后是时间轴，按时间排着关键帧、转写或字幕行、论断和未决问题。每一帧都标明是「原尺寸打开过」「只在拼图里看过」还是「抽出来没打开」，口径和 `verify` 一致。图片内嵌在文件里，默认最多 25 MB（`--max-embed-mb`），超过时先放打开过的，其余只列名字并给出提示；上百帧时改用 `--link-pictures`。视频在本机时页面可以直接播放，点时间就跳过去。页面不联网；清单和转写里的文字一律当文字显示，不会被当成标记执行。
 - **审阅包。** 一个 zip：查看页、路径改成相对的清单副本、实际打开过或被引用的图片、转写。视频默认不带（可能很大，也可能涉及隐私），要带就加 `--include-video`。打包前会检查里面的文字有没有本机路径、邮箱和密钥；有的话什么都不打包，等你看过再加 `--accept-findings`。
 
 Docker 镜像里同样的命令是 `contact_sheet ...`、`evidence_manifest view ...`、`evidence_manifest pack ...`；通过 MCP 则是 `contact_sheet`、`evidence_manifest_view`、`evidence_manifest_pack` 三个工具。

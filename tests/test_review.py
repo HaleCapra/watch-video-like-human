@@ -387,6 +387,54 @@ def main():
               "review/media/sample.mp4" in names and sum(1 for n in names if n.startswith("review/files/E1.f")) == 8
               and ("video", "src", "media/sample.mp4") in full_page.loads)
 
+        # ------------------------------------------------------------------ long videos, big pages, crops and screenshots
+        check("sheet: past one hour the label reads h:mm:ss.t, and every character of a label can be drawn",
+              sheet_mod.clock(3723.44) == "1:02:03.4" and sheet_mod.clock(59.96) == "01:00.0" and sheet_mod.clock(0) == "00:00.0"
+              and sheet_mod.clock(36000) == "10:00:00.0"
+              and all(char in sheet_mod.GLYPHS for char in "#1234 1:02:03.4 10:00:00.0 00:59.9"))
+        layer = sheet_mod.label_layer(200, 30, [(4, 4, "#123 1:02:03.4")], 2)
+        check("sheet: an hour-long label is drawn inside its band",
+              layer.startswith(b"P6\n200 30\n255\n") and 150 < layer.count(b"\xff\xff\xff") and len(layer) == len(b"P6\n200 30\n255\n") + 200 * 30 * 3)
+
+        _, printed, err = em("view", "-m", m, "--max-embed-mb", "0.05", "--output", out / "small.html")
+        small_said = json.loads(printed)
+        small = page_is_sound((out / "small.html").read_text(encoding="utf-8"), manifest_mod, "view --max-embed-mb")
+        check("view: past the size limit the opened pictures go in first, the rest are named, and the output says so",
+              small_said["pictures_left_out"] >= 5 and small_said["pictures_embedded"] >= 1
+              and small_said["pictures_embedded"] + small_said["pictures_left_out"] == 10
+              and "left out of this file to keep it small" in small.text and "--link-pictures" in err
+              and (out / "small.html").stat().st_size < (out / "evidence_view.html").stat().st_size / 2, printed + err)
+        check("view: the default limit is 25 MB of pictures, and 0 switches it off",
+              json.loads(em("view", "-m", m, "--output", out / "d.html")[1])["max_embed_mb"] == 25.0
+              and json.loads(em("view", "-m", m, "--max-embed-mb", "0", "--output", out / "d.html")[1])["pictures_left_out"] == 0)
+
+        run("crop_frame_region.py", work / "sample.mp4", "--at", "6", "--region", "0.1,0.1,0.5,0.5", "--out-dir", out)
+        crop_id = json.loads(em("add", "-m", m, "--kind", "crops", "--path", out / "crops.json", "--command", "crop")[1])["added"][0] + ".c001"
+        shutil.copyfile(str(out / "frames" / frames[3]["file"]), str(work / "page shot.jpg"))
+        shot_id = json.loads(em("add", "-m", m, "--kind", "screenshot", "--path", work / "page shot.jpg", "--time", "10",
+                                "--command", "browser screenshot")[1])["added"][0]
+        rate("E1.f001,%s,%s,%s" % (s1, crop_id, shot_id))
+        em("verify", "-m", m)
+        em("view", "-m", m, "--output", out / "more.html")
+        more = page_is_sound((out / "more.html").read_text(encoding="utf-8"), manifest_mod, "view with a crop and a screenshot")
+        kinds = {css: seen for css, seen in more.seen if css in ("row-crop", "row-shot")}
+        check("view: a region crop and a page screenshot (Route B) are on the timeline with their pictures, marked opened",
+              kinds == {"row-crop": "opened", "row-shot": "opened"} and len(more.images) == 12
+              and "page screenshot" in more.text and crop_id in more.text and shot_id in more.text, str(more.seen))
+        em("pack", "-m", m, "--output", work / "more.zip")
+        with zipfile.ZipFile(work / "more.zip") as pack:
+            names = pack.namelist()
+            more_page = page_is_sound(pack.read("review/index.html").decode("utf-8"), manifest_mod, "pack page with a crop and a screenshot")
+        check("pack: the crop and the screenshot that were opened are in the pack and on its page",
+              "review/files/%s.png" % crop_id in names and "review/files/%s.jpg" % shot_id in names
+              and "files/%s.png" % crop_id in more_page.images and "files/%s.jpg" % shot_id in more_page.images, str(names))
+        rate("E1.f001," + s1)
+        em("pack", "-m", m, "--output", work / "less.zip")
+        with zipfile.ZipFile(work / "less.zip") as pack:
+            names = pack.namelist()
+        check("pack: once they are no longer listed as opened, they stay out",
+              "review/files/%s.png" % crop_id not in names and "review/files/%s.jpg" % shot_id not in names, str(names))
+
         (work / "mail.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\nWrite to someone" + "@" + "realmail.test.io today.\n",
                                         encoding="utf-8")      # written in pieces so the repository scan does not trip on it
         _, printed, _ = em("add", "-m", m, "--kind", "captions", "--path", work / "mail.srt", "--language", "en", "--command", "test")

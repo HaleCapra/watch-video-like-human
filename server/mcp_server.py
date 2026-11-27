@@ -511,12 +511,13 @@ def contact_sheet(frames: str, out_dir: Optional[str] = None, only: Optional[str
 
 def evidence_manifest_view(manifest: str = "evidence_manifest.json", output: Optional[str] = None,
                            video: Optional[str] = None, no_video: bool = False,
-                           link_pictures: bool = False) -> Dict[str, Any]:
+                           link_pictures: bool = False, max_embed_mb: Optional[float] = None) -> Dict[str, Any]:
     """Write one HTML file that shows the record: timeline, frames with their seen / not-opened state, text, claims.
 
     It opens offline and loads nothing from the network. video: the file for the player (under the work
-    root); without it the recorded media file is used when it is under the work root. The page is for a
-    person to look at - making it adds no evidence.
+    root); without it the recorded media file is used when it is under the work root. Pictures go inside
+    the file up to max_embed_mb (default 25); past that use link_pictures. The page is for a person to
+    look at - making it adds no evidence.
     """
     argv = ["view"]
     flag(argv, "--manifest", inside(manifest, "manifest"))
@@ -526,6 +527,8 @@ def evidence_manifest_view(manifest: str = "evidence_manifest.json", output: Opt
         flag(argv, "--video", inside(video, "video"))
     switch(argv, "--no-video", no_video)
     switch(argv, "--link-pictures", link_pictures)
+    if max_embed_mb is not None:
+        flag(argv, "--max-embed-mb", float(max_embed_mb))
     flag(argv, "--within", work_root())
     return run_script("evidence_manifest.py", argv, "view", timeout=900)
 
