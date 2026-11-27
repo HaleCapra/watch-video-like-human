@@ -78,6 +78,17 @@ jobs:
           python3 -I -B tools/mcp_route0_smoke.py --host-work "$PWD/ci-work" --video sample.mp4 --out mcp-out \
             --model tiny --expect test --expect video --expect tools -- \
             docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" -v "$PWD/ci-cache:/cache" wvlh:ci mcp
+      - name: A contact sheet, the view page and the review pack, made inside the container
+        run: |
+          box() { docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" wvlh:ci "$@"; }
+          box contact_sheet --frames /work/out/frames.json --columns 2 --rows 2
+          box evidence_manifest add -m /work/out/evidence_manifest.json --kind contact-sheets \
+            --path /work/out/sheets.json --command "contact_sheet --frames frames.json --columns 2 --rows 2"
+          box evidence_manifest verify -m /work/out/evidence_manifest.json
+          box evidence_manifest view -m /work/out/evidence_manifest.json --within /work
+          box evidence_manifest pack -m /work/out/evidence_manifest.json --output /work/out/review.zip --within /work
+          test -s ci-work/out/sheets/sheet_001.jpg
+          python3 -I -B tests/test_review.py --check-page ci-work/out/evidence_view.html --check-pack ci-work/out/review.zip
       - name: Image size
         run: |
           bytes=$(docker image inspect wvlh:ci --format '{{.Size}}')

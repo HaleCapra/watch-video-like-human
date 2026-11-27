@@ -199,6 +199,40 @@ files belong to you. The speech model is downloaded on first use into `/cache`. 
 DIR` runs Route 0 from end to end as a self-check. Versions are fixed in `Dockerfile` and
 `docker/requirements.txt`; the image is built and tested by GitHub Actions, never on your machine.
 
+### Looking at the record: contact sheets, a view page, a review pack
+
+Three things for the moment after the tools have run, when someone wants to see what the answer
+rests on. None of them adds evidence; they show what is on record.
+
+```
+python scripts/contact_sheet.py --frames WORK/frames.json            # WORK/sheets/sheet_001.jpg ..., WORK/sheets.json
+python scripts/evidence_manifest.py view -m WORK/evidence_manifest.json     # WORK/evidence_view.html
+python scripts/evidence_manifest.py pack -m WORK/evidence_manifest.json --output WORK/review.zip
+```
+
+- **Contact sheets.** Many frames on one picture, each tile labelled with the frame's index and
+  time (`#012 01:23.4`). Made with ffmpeg alone; the labels are drawn as dots, so no font and no
+  extra package is needed. An agent can look over a long video in a few pictures and then open
+  the frames that matter. A sheet that was opened counts as its frames *seen as tiles* - the
+  disclosure says so and keeps that number apart from frames opened at full size. Small text and
+  fine detail still need the frame itself or a crop. A sheet nobody opened counts for nothing.
+- **The view page.** One HTML file that opens offline: the disclosure, then a timeline with the
+  frames, the transcript or caption lines, the claims and the open questions in time order. Every
+  frame is marked *opened at full size*, *seen only as a tile of a contact sheet* or *extracted,
+  not opened* - by the same rule `verify` uses. Pictures sit inside the file up to 25 MB
+  (`--max-embed-mb`); for hundreds of frames use `--link-pictures`. If the video is on the machine the page plays it
+  and every time is a button. The page loads nothing from the network, and text from the manifest
+  or the transcript is shown as text, never used as markup.
+- **The review pack.** A zip with the page, a copy of the manifest with relative paths, the
+  pictures that were opened or cited, and the transcripts. The video is left out unless you ask
+  (`--include-video`): it can be large, and it can be private. Before anything is written the
+  texts are checked for local paths, email addresses and keys; with findings nothing is packed
+  until you have looked (`--accept-findings`).
+
+In the Docker image the same commands are `contact_sheet ...`, `evidence_manifest view ...` and
+`evidence_manifest pack ...`; through MCP they are the tools `contact_sheet`,
+`evidence_manifest_view` and `evidence_manifest_pack`.
+
 ### MCP: the same tools, callable by any agent
 
 `server/mcp_server.py` is an MCP server (stdio). It adds nothing of its own: each tool starts one
@@ -217,6 +251,8 @@ of the skill's scripts and returns what the script printed, as JSON. The agent s
 | `read_transcript` | `read_transcript.py --json` |
 | `normalize_transcript` | `normalize_transcript.py` |
 | `evidence_manifest_init` / `_route` / `_add` / `_rate` / `_verify` / `_render` / `_lint` | `evidence_manifest.py` |
+| `contact_sheet` | `contact_sheet.py` - frames on labelled sheets |
+| `evidence_manifest_view` / `_pack` | `evidence_manifest.py view` / `pack` - a page and a zip for a person to look at the record |
 
 Every result has an `evidence` note that names the channel and what the result does **not**
 prove: frames written are not frames seen, captions read are neither watched nor heard. The
@@ -489,6 +525,22 @@ docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-vid
 
 脚本按名字调用（不带 `.py`），参数和 `SKILL.md` 里一样；路径写容器里的（`/work/...`）。Linux 上加 `--user "$(id -u):$(id -g)"`，生成的文件才归你。语音模型第一次用时下载到 `/cache`。`smoke VIDEO --work DIR` 会把路线 0 从头到尾跑一遍，用来自检。版本固定在 `Dockerfile` 和 `docker/requirements.txt` 里；镜像由 GitHub Actions 构建和测试，不在你的电脑上构建。
 
+### 回头看记录：关键帧拼图、查看页、审阅包
+
+工具跑完之后，想看看答案到底依据了什么，用这三样。它们都不增加证据，只是把已有的记录摆出来。
+
+```
+python scripts/contact_sheet.py --frames WORK/frames.json            # WORK/sheets/sheet_001.jpg ...，WORK/sheets.json
+python scripts/evidence_manifest.py view -m WORK/evidence_manifest.json     # WORK/evidence_view.html
+python scripts/evidence_manifest.py pack -m WORK/evidence_manifest.json --output WORK/review.zip
+```
+
+- **关键帧拼图。** 把很多帧拼在一张图上，每格下面标着这帧的编号和时间（`#012 01:23.4`）。只用 ffmpeg；标签是脚本自己用点阵画的，不需要字体，也不加任何依赖。助手可以用几张图先扫一遍长视频，再去打开要紧的帧。打开过的拼图，里面的帧算「以缩略格看过」，披露里会照实写，并且和「原尺寸打开过的帧」分开计数。小字和细节仍然要打开那一帧本身或者裁剪图。没打开过的拼图什么都不算。
+- **查看页。** 一个离线就能打开的 HTML 文件：先是披露，然后是时间轴，按时间排着关键帧、转写或字幕行、论断和未决问题。每一帧都标明是「原尺寸打开过」「只在拼图里看过」还是「抽出来没打开」，口径和 `verify` 一致。图片内嵌在文件里，默认最多 25 MB（`--max-embed-mb`），超过时先放打开过的，其余只列名字并给出提示；上百帧时改用 `--link-pictures`。视频在本机时页面可以直接播放，点时间就跳过去。页面不联网；清单和转写里的文字一律当文字显示，不会被当成标记执行。
+- **审阅包。** 一个 zip：查看页、路径改成相对的清单副本、实际打开过或被引用的图片、转写。视频默认不带（可能很大，也可能涉及隐私），要带就加 `--include-video`。打包前会检查里面的文字有没有本机路径、邮箱和密钥；有的话什么都不打包，等你看过再加 `--accept-findings`。
+
+Docker 镜像里同样的命令是 `contact_sheet ...`、`evidence_manifest view ...`、`evidence_manifest pack ...`；通过 MCP 则是 `contact_sheet`、`evidence_manifest_view`、`evidence_manifest_pack` 三个工具。
+
 ### MCP：同一套工具，任何助手都能直接调用
 
 `server/mcp_server.py` 是一个 MCP 服务（stdio）。它自己不添任何逻辑：每个工具启动 skill 里的一个脚本，把脚本打印的内容按 JSON 交回。助手仍然读 `SKILL.md`，证据够不够说某句话，仍然由助手判断。
@@ -505,6 +557,8 @@ docker run --rm -v "$PWD:/work" -v wvlh-cache:/cache ghcr.io/halecapra/watch-vid
 | `read_transcript` | `read_transcript.py --json` |
 | `normalize_transcript` | `normalize_transcript.py` |
 | `evidence_manifest_init` / `_route` / `_add` / `_rate` / `_verify` / `_render` / `_lint` | `evidence_manifest.py` |
+| `contact_sheet` | `contact_sheet.py`，把帧拼成带标签的拼图 |
+| `evidence_manifest_view` / `_pack` | `evidence_manifest.py view` / `pack`，给人看记录用的页面和压缩包 |
 
 每个结果都带一条 `evidence` 说明：它属于哪个通道，以及它**不能**证明什么。抽出来的帧不等于看过，读到的字幕既不是看过也不是听过。披露块仍然只由 `evidence_manifest_render` 生成。
 

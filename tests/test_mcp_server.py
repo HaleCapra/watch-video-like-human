@@ -41,9 +41,10 @@ def load_server():
     return module
 
 
-EXPECTED = ["about", "align_transcript_frames", "evidence_manifest_add", "evidence_manifest_init",
-            "evidence_manifest_lint", "evidence_manifest_rate", "evidence_manifest_render",
-            "evidence_manifest_route", "evidence_manifest_verify", "extract_media_assets", "fetch_media",
+EXPECTED = ["about", "align_transcript_frames", "contact_sheet", "evidence_manifest_add", "evidence_manifest_init",
+            "evidence_manifest_lint", "evidence_manifest_pack", "evidence_manifest_rate", "evidence_manifest_render",
+            "evidence_manifest_route", "evidence_manifest_verify", "evidence_manifest_view", "extract_media_assets",
+            "fetch_media",
             "normalize_transcript", "probe_capabilities", "read_transcript", "setup_plan", "transcribe_local"]
 
 SRT = """1
@@ -279,6 +280,48 @@ def part_two(work, outside):
               and "Captions + sampled visuals" in text, text[:800])
         ok("evidence_manifest_lint", {"file": "out/answer.md"})
 
+        # v5.6: contact sheets, the view page, the review pack
+        sheet = ok("contact_sheet", {"frames": "out/frames.json", "columns": 2, "rows": 2})
+        check("contact_sheet: sheets on disk, labelled as written, not seen",
+              (work / "out" / "sheets.json").is_file() and (work / "out" / "sheets" / "sheet_001.jpg").is_file()
+              and sheet["evidence"]["channel"] == "visual" and "frames seen" in sheet["evidence"]["does_not_count_as"],
+              json.dumps(sheet)[:600])
+        added = ok("evidence_manifest_add", {"manifest": manifest, "kind": "contact-sheets", "path": "out/sheets.json",
+                                             "command": "MCP contact_sheet"})
+        sheet_id = added["result"]["added"][0] + ".s001"
+        ok("evidence_manifest_rate", {"manifest": manifest, "visual": "sampled", "frames_inspected": frame_id + ".f001," + sheet_id,
+                                      "audio": "captions-only", "alignment": "timestamp-aligned"})
+        again = ok("evidence_manifest_render", {"manifest": manifest})
+        check("contact_sheet: a sheet that was opened shows up in the disclosure as tiles, not as frames opened",
+              "seen only as tile" in again["text"] and "1 of %d actually looked at" % len(frames["frames"]) in again["text"],
+              again["text"][:700])
+        view = ok("evidence_manifest_view", {"manifest": manifest, "output": "out/view.html", "video": "sample.mp4"})
+        page = (work / "out" / "view.html").read_text(encoding="utf-8")
+        check("evidence_manifest_view: one page, no network, nothing of this machine's folders, adds no evidence",
+              "Content-Security-Policy" in page and "default-src " in page and page.count("<script") == 1
+              and "http://" not in page and "https://" not in page and str(work) not in page
+              and str(work).replace("\\", "/") not in page and view["result"]["video_linked"] is True
+              and view["evidence"]["channel"] == "none" and "frames seen" in view["evidence"]["does_not_count_as"],
+              str(["Content-Security-Policy" in page, page.count("<script"), "http://" in page, "https://" in page,
+                   str(work) in page, view["result"].get("video_linked"), view["evidence"]]))
+        packed = ok("evidence_manifest_pack", {"manifest": manifest, "output": "out/review.zip"})
+        check("evidence_manifest_pack: a zip under the root, without the video",
+              (work / "out" / "review.zip").is_file() and packed["result"]["video_included"] is False
+              and packed["result"]["files"] >= 5, json.dumps(packed)[:600])
+        (outside / "frame.jpg").write_bytes((work / "out" / "frames" / frames["frames"][0]["file"]).read_bytes())
+        crafted = json.loads((work / manifest).read_text(encoding="utf-8"))
+        crafted["artifacts"][0]["details"]["frames"][0]["path"] = str(outside / "frame.jpg")
+        crafted["artifacts"][0]["details"]["frames"][0].pop("relpath", None)
+        (work / "out" / "crafted.json").write_text(json.dumps(crafted), encoding="utf-8")
+        ok("evidence_manifest_pack", {"manifest": "out/crafted.json", "output": "out/crafted.zip", "all_frames": True})
+        import zipfile
+        with zipfile.ZipFile(str(work / "out" / "crafted.zip")) as z:
+            inside_zip = z.namelist()
+        check("evidence_manifest_pack: a manifest that points at a file outside the root does not get it packed",
+              "review/files/%s.f001.jpg" % frame_id not in inside_zip
+              and "review/files/%s.f002.jpg" % frame_id in inside_zip, str(inside_zip))
+        (outside / "frame.jpg").unlink()
+
         (work / "talk.srt").write_text(SRT.replace("The end.", "Changed after it was recorded."), encoding="utf-8")
         broken, is_error, _ = client.call("evidence_manifest_verify", {"manifest": manifest})
         check("verify: a file changed after recording fails, and the failure is passed on",
@@ -306,7 +349,14 @@ def part_two(work, outside):
                  ("evidence_manifest_verify", {"manifest": "../m.json"}),
                  ("evidence_manifest_render", {"manifest": manifest, "output": away + ".md"}),
                  ("evidence_manifest_render", {"manifest": "../m.json"}),
-                 ("evidence_manifest_lint", {"file": away})]
+                 ("evidence_manifest_lint", {"file": away}),
+                 ("contact_sheet", {"frames": "../frames.json"}),
+                 ("contact_sheet", {"frames": "out/frames.json", "out_dir": str(outside / "sheets")}),
+                 ("evidence_manifest_view", {"manifest": "../m.json"}),
+                 ("evidence_manifest_view", {"manifest": manifest, "output": away + ".html"}),
+                 ("evidence_manifest_view", {"manifest": manifest, "video": away}),
+                 ("evidence_manifest_pack", {"manifest": manifest, "output": str(outside / "p.zip")}),
+                 ("evidence_manifest_pack", {"manifest": manifest, "include_video": True, "video": away})]
         for name, arguments in cases:
             refused(name, arguments)
         check("stdio: %d path arguments that leave the root are refused, on every tool that takes a path" % len(cases),

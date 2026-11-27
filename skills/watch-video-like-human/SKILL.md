@@ -241,9 +241,8 @@ Keep `evidence_manifest.json` in the work directory for every analysis: routes t
 product file with its hash and source command, which frames were actually opened, the channel
 ratings. For note-grade work also record key claims (`claim`) and anything that affects a
 conclusion and could not be settled (`issue`) - with what was tried and why it stayed open,
-never a guessed answer. **Extracted is not inspected**: `--frames-inspected` lists only the
-pictures you opened. Commands and the checks `verify` applies are in
-`references/evidence-manifest.md`.
+never a guessed answer. **Extracted is not inspected**: `--frames-inspected` lists only the pictures you opened
+(a contact sheet you opened counts as tiles, not full-size frames). Commands and `verify`'s checks: `references/evidence-manifest.md`.
 
 ### 8. Write the result
 
@@ -385,8 +384,9 @@ For a blocked attempt, still begin with the route:
 | `extract_media_assets.py` | Hybrid keyframes with real PTS, `--detail`, `--start`/`--end` focus, `--at` cue frames, dedupe and cap, audio (or `"audio": "none"`), content-hash cache. |
 | `read_transcript.py` | Page through the whole transcript with global segment indices and a read log; `--gaps`; `--cues` for presenter cue moments. |
 | `crop_frame_region.py` | Crop one region of a frame at source resolution (0-1 fractions, never enlarged) into `crops/` and `crops.json`. |
+| `contact_sheet.py` | Many frames on one labelled picture (`#INDEX TIME` under each tile) to look them over at once; ffmpeg only. A tile is not a full-size frame. |
 | `align_transcript_frames.py` | `timeline.json` (speech -> frames) and `visual_outline.json` (frame span -> speech). |
-| `evidence_manifest.py` | `evidence_manifest.json`: routes tried, files with hashes and source commands, channel ratings, claim records and issues; `verify`, `render` (Markdown or JSON) and `lint` the disclosure. |
+| `evidence_manifest.py` | `evidence_manifest.json`: routes tried, files with hashes and source commands, channel ratings, claim records and issues; `verify`, `render` (Markdown or JSON) and `lint` the disclosure; `view` (one offline HTML page of the record) and `pack` (a zip to hand on, no video unless asked). |
 | `analyze_keyframes.py` | Optional, off by default: external OCR or vision model per keyframe, always labelled second-hand. |
 | `transcribe_cloud.py` | Optional, off by default: cloud speech recognition with the user's own key, chunked above 24 MB, failed chunks reported. |
 
