@@ -3644,7 +3644,7 @@ def _():
         assert changelog.index("## 5.4.0") < changelog.index("## 5.3.0")
         for manifest_file in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
             assert json.loads((REPO / manifest_file).read_text(encoding="utf-8"))["version"] == "5.4.0", manifest_file
-    assert manifest_mod_version() == "5.4"
+    assert manifest_mod_version() == "5.5"
 
 
 @check("v5.4 recording: the installed ffmpeg is ASKED whether -thread_queue_size is still an input option (ffmpeg 9 says no)")
