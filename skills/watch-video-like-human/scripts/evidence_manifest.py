@@ -1657,8 +1657,8 @@ def view_page(manifest: dict, manifest_path: Path, picture, video_href: str | No
 
 def relative_href(target: Path, page_dir: Path) -> str | None:
     """A relative link from the page's folder to a file, or None when there is no relative way (another drive)."""
-    try:
-        return quote(Path(os.path.relpath(str(target), str(page_dir))).as_posix())
+    try:        # real paths on both sides: Windows may hand out the same folder in its short (8.3) and long form
+        return quote(Path(os.path.relpath(os.path.realpath(str(target)), os.path.realpath(str(page_dir)))).as_posix())
     except ValueError:
         return None
 
