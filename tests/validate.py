@@ -2832,7 +2832,7 @@ def _():
     front = SKILL_ONLY.split("---\n", 2)[1]
     keys = [line.split(":", 1)[0] for line in front.splitlines() if line and not line.startswith(" ")]
     assert keys == ["name", "description", "license", "compatibility", "metadata"], keys
-    assert 'version: "5.4.0"' in front and "license: MIT" in front
+    assert 'version: "5.5.0"' in front and "license: MIT" in front
     compat = front.split("compatibility:", 1)[1].split("\nmetadata:", 1)[0].strip()
     assert len(compat) <= 500 and "Windows, macOS and Linux" in compat and "Standard library only" in compat
     import re as _re
@@ -2878,7 +2878,7 @@ def _():
     plugin = json.loads((REPO / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((REPO / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     codex = json.loads((REPO / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    assert plugin["name"] == "watch-video-like-human" and plugin["version"] == "5.4.0" and plugin["license"] == "MIT"
+    assert plugin["name"] == "watch-video-like-human" and plugin["version"] == "5.5.0" and plugin["license"] == "MIT"
     assert market["plugins"][0]["name"] == plugin["name"] and market["plugins"][0]["source"] == "./"
     assert market["owner"]["name"] and codex["name"] == plugin["name"] and codex["version"] == plugin["version"]
     assert codex["skills"] == "./skills/" and (REPO / "skills").is_dir()
@@ -3608,7 +3608,7 @@ def _():
                    "~/.watch-video-like-human", "scripts/transcribe_local.py WORK/audio.wav --language LANG",
                    "**renumbers every frame**", "`*.stale.json`", "--transcript-shift SECONDS",
                    "16. Nothing was installed and no browser login was used without the user's yes", "**v5.4**",
-                   "includes the macOS 5.3.1 field\n  patch", 'version: "5.4.0"'):
+                   "includes the macOS 5.3.1 field\n  patch", 'version: "5.5.0"'):
         assert phrase in SKILL_ONLY, phrase
     notes = REFERENCES["recording-notes.md"]
     for phrase in ("**The agent's own app must stay out of the way.**", "do not end your\n  turn",
@@ -3637,14 +3637,14 @@ def _():
     if (REPO / "README.md").is_file():
         readme = (REPO / "README.md").read_text(encoding="utf-8")
         for phrase in ("scripts/setup_tools.py --yes", "--tier whisper --yes", "never uses `sudo`", "不会用 sudo",
-                       "Intel Mac", "yt-dlp", "5.4.0", "only when you say yes and the browser is named",
+                       "Intel Mac", "yt-dlp", "5.5.0", "only when you say yes and the browser is named",
                        "cookies 等同登录凭证"):
             assert phrase in readme, phrase
         changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
         assert changelog.index("## 5.4.0") < changelog.index("## 5.3.0")
         for manifest_file in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
-            assert json.loads((REPO / manifest_file).read_text(encoding="utf-8"))["version"] == "5.4.0", manifest_file
-    assert manifest_mod_version() == "5.4"
+            assert json.loads((REPO / manifest_file).read_text(encoding="utf-8"))["version"] == "5.5.0", manifest_file
+    assert manifest_mod_version() == "5.5"
 
 
 @check("v5.4 recording: the installed ffmpeg is ASKED whether -thread_queue_size is still an input option (ffmpeg 9 says no)")

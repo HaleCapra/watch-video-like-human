@@ -134,7 +134,7 @@ projects) or to `.claude/skills/watch-video-like-human/` inside one project.
 
 **Claude apps that accept skill uploads**
 
-Run `python tools/build_zip.py` and upload `dist/watch-video-like-human-5.4.0.zip` in the app's
+Run `python tools/build_zip.py` and upload `dist/watch-video-like-human-5.5.0.zip` in the app's
 skill settings. A hosted sandbox has no screen, no audio device and limited network, so expect
 Route 0 on uploaded files only.
 
@@ -446,7 +446,7 @@ npx skills add <owner>/<repo>
 
 **支持上传技能的 Claude 应用**
 
-运行 `python tools/build_zip.py`，在应用的技能设置里上传 `dist/watch-video-like-human-5.4.0.zip`。云端沙箱没有屏幕、没有音频设备、联网受限，一般只能对上传的文件走 Route 0。
+运行 `python tools/build_zip.py`，在应用的技能设置里上传 `dist/watch-video-like-human-5.5.0.zip`。云端沙箱没有屏幕、没有音频设备、联网受限，一般只能对上传的文件走 Route 0。
 
 **Codex**
 

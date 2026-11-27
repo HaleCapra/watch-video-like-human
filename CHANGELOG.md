@@ -1,9 +1,9 @@
 # Changelog
 
-## 5.5.0 (in progress)
+## 5.5.0 (2026-11-27)
 
 The agent stays on the host and coordinates; Docker is a toolbox with no agent in it; MCP is the
-way in. The skill's own behaviour and version number are unchanged so far.
+way in. The skill's own behaviour is unchanged.
 
 - **CI** (`.github/workflows/`): `tests/validate.py` on Linux and Windows for every pull request,
   macOS (Apple silicon and Intel) when started by hand, with `mlx-whisper` really transcribing on
