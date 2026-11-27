@@ -41,7 +41,7 @@ except Exception:                                 # noqa: BLE001 - any failure m
             """Stand-in when the MCP SDK is not installed."""
 
 SERVER_NAME = "watch-video-like-human"
-SERVER_VERSION = "5.5.0"
+SERVER_VERSION = "5.6.0"
 HERE = Path(__file__).resolve().parent
 SCRIPTS = Path(os.environ.get("WVLH_SCRIPTS") or HERE.parent / "skills" / "watch-video-like-human" / "scripts")
 STATE = {"root": os.path.realpath(os.getcwd())}

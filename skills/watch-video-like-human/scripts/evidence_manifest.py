@@ -185,7 +185,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 SCHEMA = "evidence-manifest/1"
-SKILL_VERSION = "5.5"
+SKILL_VERSION = "5.6"
 ROUTES = {"0": "0 - user file", "A": "A - download", "B": "B - browser extraction",
           "C": "C - screen + loopback recording"}
 KINDS = ["media", "audio", "frames", "captions", "transcript", "timeline", "visual_outline",

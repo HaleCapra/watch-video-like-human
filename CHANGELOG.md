@@ -1,6 +1,6 @@
 # Changelog
 
-## 5.6.0 (in progress)
+## 5.6.0 (2026-11-27)
 
 Three ways to look at the record after the tools have run. None adds evidence; the skill's
 version number and its existing behaviour are unchanged so far.
