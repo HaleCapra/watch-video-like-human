@@ -1,6 +1,6 @@
 {
   "name": "watch-video-like-human",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "description": "Watch any video the user can legitimately play - a local file, a download, in-browser extraction, or screen recording - and report honestly what was actually seen, heard or only read.",
   "author": {
     "name": "watch-video-like-human contributors"

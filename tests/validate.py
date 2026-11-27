@@ -2832,7 +2832,7 @@ def _():
     front = SKILL_ONLY.split("---\n", 2)[1]
     keys = [line.split(":", 1)[0] for line in front.splitlines() if line and not line.startswith(" ")]
     assert keys == ["name", "description", "license", "compatibility", "metadata"], keys
-    assert 'version: "5.4.0"' in front and "license: MIT" in front
+    assert 'version: "5.5.0"' in front and "license: MIT" in front
     compat = front.split("compatibility:", 1)[1].split("\nmetadata:", 1)[0].strip()
     assert len(compat) <= 500 and "Windows, macOS and Linux" in compat and "Standard library only" in compat
     import re as _re
@@ -2878,7 +2878,7 @@ def _():
     plugin = json.loads((REPO / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((REPO / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     codex = json.loads((REPO / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
-    assert plugin["name"] == "watch-video-like-human" and plugin["version"] == "5.4.0" and plugin["license"] == "MIT"
+    assert plugin["name"] == "watch-video-like-human" and plugin["version"] == "5.5.0" and plugin["license"] == "MIT"
     assert market["plugins"][0]["name"] == plugin["name"] and market["plugins"][0]["source"] == "./"
     assert market["owner"]["name"] and codex["name"] == plugin["name"] and codex["version"] == plugin["version"]
     assert codex["skills"] == "./skills/" and (REPO / "skills").is_dir()

@@ -4,7 +4,7 @@ description: Watch and analyze any video the user can legitimately play, through
 license: MIT
 compatibility: Needs Python 3.9+ and ffmpeg/ffprobe to run the bundled scripts; yt-dlp, a local Whisper, a browser tool and a loopback audio device are optional and only unlock more routes. scripts/setup_tools.py shows what is missing and installs it only after the user agrees. Works on Windows, macOS and Linux. Standard library only.
 metadata:
-  version: "5.4.0"
+  version: "5.5.0"
 ---
 
 # Watch Video Like Human

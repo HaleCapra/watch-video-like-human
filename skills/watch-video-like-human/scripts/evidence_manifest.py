@@ -174,7 +174,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "evidence-manifest/1"
-SKILL_VERSION = "5.4"
+SKILL_VERSION = "5.5"
 ROUTES = {"0": "0 - user file", "A": "A - download", "B": "B - browser extraction",
           "C": "C - screen + loopback recording"}
 KINDS = ["media", "audio", "frames", "captions", "transcript", "timeline", "visual_outline",
