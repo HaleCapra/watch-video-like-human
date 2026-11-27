@@ -3608,7 +3608,7 @@ def _():
                    "~/.watch-video-like-human", "scripts/transcribe_local.py WORK/audio.wav --language LANG",
                    "**renumbers every frame**", "`*.stale.json`", "--transcript-shift SECONDS",
                    "16. Nothing was installed and no browser login was used without the user's yes", "**v5.4**",
-                   "includes the macOS 5.3.1 field\n  patch", 'version: "5.4.0"'):
+                   "includes the macOS 5.3.1 field\n  patch", 'version: "5.5.0"'):
         assert phrase in SKILL_ONLY, phrase
     notes = REFERENCES["recording-notes.md"]
     for phrase in ("**The agent's own app must stay out of the way.**", "do not end your\n  turn",
@@ -3637,13 +3637,13 @@ def _():
     if (REPO / "README.md").is_file():
         readme = (REPO / "README.md").read_text(encoding="utf-8")
         for phrase in ("scripts/setup_tools.py --yes", "--tier whisper --yes", "never uses `sudo`", "不会用 sudo",
-                       "Intel Mac", "yt-dlp", "5.4.0", "only when you say yes and the browser is named",
+                       "Intel Mac", "yt-dlp", "5.5.0", "only when you say yes and the browser is named",
                        "cookies 等同登录凭证"):
             assert phrase in readme, phrase
         changelog = (REPO / "CHANGELOG.md").read_text(encoding="utf-8")
         assert changelog.index("## 5.4.0") < changelog.index("## 5.3.0")
         for manifest_file in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
-            assert json.loads((REPO / manifest_file).read_text(encoding="utf-8"))["version"] == "5.4.0", manifest_file
+            assert json.loads((REPO / manifest_file).read_text(encoding="utf-8"))["version"] == "5.5.0", manifest_file
     assert manifest_mod_version() == "5.5"
 
 
