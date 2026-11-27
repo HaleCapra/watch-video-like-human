@@ -617,3 +617,7 @@ python tools/build_zip.py                # 生成 dist/watch-video-like-human-<�
 ### 许可
 
 MIT，见 `LICENSE`。
+
+## License
+
+MIT, see `LICENSE`. The Docker image also contains third-party software under its own licenses (FFmpeg there is GPL); see `THIRD_PARTY_NOTICES.md`.
