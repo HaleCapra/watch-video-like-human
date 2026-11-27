@@ -2436,7 +2436,8 @@ def _():
 @check("v5.3 package: 23 files, new scripts and references present, the 74 earlier checks are all still in this suite")
 def _():
     files = sorted(p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*") if p.is_file())
-    assert len(files) == 23, files
+    assert "references/browser-mcp.md" in files            # v5.5: one more reference, nothing else new in the package
+    assert len(files) == 24, files
     assert "scripts/setup_tools.py" in files and "scripts/transcribe_local.py" in files
     for rel in ("scripts/crop_frame_region.py", "scripts/read_transcript.py", "scripts/transcribe_cloud.py",
                 "references/note-workflow.md", "references/note-formats.md", "references/routes.md",
@@ -2838,7 +2839,10 @@ def _():
     # the instructions must not depend on one vendor's tool or product names
     banned = _re.compile(r"\b(AskUserQuestion|mcp__\w+|javascript_tool|TodoWrite|claude-video|Claude in Chrome|"
                          r"apply_patch|view_image)\b")
-    for name, text in [("SKILL.md", SKILL_ONLY)] + [(n, t) for n, t in REFERENCES.items() if n != "hosts.md"]:
+    # hosts.md maps capabilities to hosts; browser-mcp.md (v5.5) maps the Route B snippets to named browser
+    # tools. Those two are where product names belong - every other file stays free of them.
+    for name, text in [("SKILL.md", SKILL_ONLY)] + [(n, t) for n, t in REFERENCES.items()
+                                                     if n not in ("hosts.md", "browser-mcp.md")]:
         found = banned.findall(text)
         assert not found, (name, found)
     for vendor in ("Claude", "Codex", "CodeBuddy", "WorkBuddy"):

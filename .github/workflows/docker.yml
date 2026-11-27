@@ -4,10 +4,10 @@ name: docker
 # Only GITHUB_TOKEN is used. The package stays private, like the repository.
 on:
   pull_request:
-    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", tools/route0_smoke.py, .github/workflows/docker.yml]
+    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", "server/**", "tools/**", .github/workflows/docker.yml]
   push:
     branches: [main]
-    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", tools/route0_smoke.py, .github/workflows/docker.yml]
+    paths: [Dockerfile, .dockerignore, "docker/**", "skills/**", "server/**", "tools/**", .github/workflows/docker.yml]
   workflow_dispatch:
 
 permissions:
@@ -73,6 +73,11 @@ jobs:
         run: |
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" -v "$PWD/ci-cache:/cache" wvlh:ci \
             smoke /work/sample.mp4 --work /work/out --model tiny --expect test --expect video --expect tools
+      - name: Route 0 again, through the MCP entry point
+        run: |
+          python3 -I -B tools/mcp_route0_smoke.py --host-work "$PWD/ci-work" --video sample.mp4 --out mcp-out \
+            --model tiny --expect test --expect video --expect tools -- \
+            docker run -i --rm --user "$(id -u):$(id -g)" -v "$PWD/ci-work:/work" -v "$PWD/ci-cache:/cache" wvlh:ci mcp
       - name: Image size
         run: |
           bytes=$(docker image inspect wvlh:ci --format '{{.Size}}')

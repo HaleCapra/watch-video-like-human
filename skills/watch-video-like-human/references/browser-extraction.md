@@ -2,7 +2,8 @@
 
 JavaScript snippets for Rungs 0-4 of the evidence ladder. Every snippet is a self-contained
 expression that returns a value — paste it into whatever "evaluate JavaScript in the page" tool
-your environment provides.
+your environment provides. How they go into the browser tools agents commonly have
+(which tool, which wrapper, what comes back) is in `browser-mcp.md`.
 
 Conventions used here:
 

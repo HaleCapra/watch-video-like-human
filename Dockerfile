@@ -1,7 +1,7 @@
 # watch-video-like-human - tools only (Route 0: a file you have, Route A: allowed yt-dlp retrieval).
 #
 # There is no agent in this image, no browser and no screen recorder: the agent runs on the host and
-# calls these tools; Route B (browser) and Route C (recording) need the host itself.
+# calls these tools (directly, or through `wvlh mcp`, an MCP server on stdin/stdout); Route B (browser) and Route C (recording) need the host itself.
 # Every version below is fixed on purpose. To move one, change it here and let CI rebuild and re-test.
 
 FROM mwader/static-ffmpeg:7.1.1@sha256:11a44711684c0b9f754c047dcd64235b8b52deab251bd0e0a86f22faa160749c AS ffmpeg
@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir --disable-pip-version-check -r /tmp/requirements.
 # The scripts, minus the two that only make sense on the host (screen recording, installing tools).
 COPY skills/watch-video-like-human/scripts/ /opt/watch-video-like-human/scripts/
 COPY tools/route0_smoke.py /opt/watch-video-like-human/tools/route0_smoke.py
+COPY server/mcp_server.py /opt/watch-video-like-human/server/mcp_server.py
 COPY docker/entrypoint.sh /usr/local/bin/wvlh
 RUN rm /opt/watch-video-like-human/scripts/record_browser_playback.py /opt/watch-video-like-human/scripts/setup_tools.py \
     && chmod 755 /usr/local/bin/wvlh \
