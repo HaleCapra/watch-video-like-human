@@ -94,6 +94,14 @@ EVIDENCE = {
                   "does_not_count_as": ["frames seen", "heard"],
                   "note": "Pairing files by time does not add evidence to either channel."},
     "record": {"channel": "record keeping", "note": "The manifest records what was done. It adds no evidence."},
+    "sheet": {"channel": "visual", "counts_as": "contact sheets written to disk",
+              "does_not_count_as": ["frames seen", "frames seen at full size"],
+              "note": "A sheet nobody opened counts for nothing. A sheet you opened counts as its frames seen as "
+                      "tiles (reduced size): list the sheet id in frames_inspected. Small text and fine detail "
+                      "still need the frame itself or a crop."},
+    "view": {"channel": "none", "counts_as": "a page or a pack for a person to look at the record",
+             "does_not_count_as": ["frames seen", "watched", "heard"],
+             "note": "Made from the manifest. Making it, or opening it, adds no evidence to any channel."},
     "disclosure": {"channel": "disclosure", "note": "Generated from the manifest. Put it first in the answer, unchanged."},
 }
 
@@ -477,6 +485,73 @@ def evidence_manifest_render(manifest: str = "evidence_manifest.json", output: O
     return answer
 
 
+def contact_sheet(frames: str, out_dir: Optional[str] = None, only: Optional[str] = None,
+                  start: Optional[str] = None, end: Optional[str] = None, columns: int = 4, rows: int = 3,
+                  tile_width: int = 480) -> Dict[str, Any]:
+    """Put extracted frames on contact sheets (a grid, each tile labelled #INDEX TIME); writes sheets.json.
+
+    For looking over many frames at once before opening the ones that matter. only: frame indexes such as
+    1,3-8. A sheet you open counts as its frames seen as tiles, not at full size; a sheet you did not open
+    counts for nothing. Register sheets.json with evidence_manifest_add (kind contact-sheets).
+    """
+    argv: List[str] = []
+    flag(argv, "--frames", inside(frames, "frames"))
+    if out_dir is not None:
+        flag(argv, "--out-dir", inside(out_dir, "out_dir"))
+    if only is not None:
+        flag(argv, "--only", plain(only, "only", r"[0-9][0-9,\-\s]{0,400}"))
+    for name, value in (("--start", start), ("--end", end)):
+        if value is not None:
+            flag(argv, name, plain(value, name[2:], r"[0-9][0-9:.]{0,20}"))
+    flag(argv, "--columns", int(columns))
+    flag(argv, "--rows", int(rows))
+    flag(argv, "--tile-width", int(tile_width))
+    return run_script("contact_sheet.py", argv, "sheet", timeout=900)
+
+
+def evidence_manifest_view(manifest: str = "evidence_manifest.json", output: Optional[str] = None,
+                           video: Optional[str] = None, no_video: bool = False,
+                           link_pictures: bool = False) -> Dict[str, Any]:
+    """Write one HTML file that shows the record: timeline, frames with their seen / not-opened state, text, claims.
+
+    It opens offline and loads nothing from the network. video: the file for the player (under the work
+    root); without it the recorded media file is used when it is under the work root. The page is for a
+    person to look at - making it adds no evidence.
+    """
+    argv = ["view"]
+    flag(argv, "--manifest", inside(manifest, "manifest"))
+    if output is not None:
+        flag(argv, "--output", inside(output, "output"))
+    if video is not None:
+        flag(argv, "--video", inside(video, "video"))
+    switch(argv, "--no-video", no_video)
+    switch(argv, "--link-pictures", link_pictures)
+    flag(argv, "--within", work_root())
+    return run_script("evidence_manifest.py", argv, "view", timeout=900)
+
+
+def evidence_manifest_pack(manifest: str = "evidence_manifest.json", output: Optional[str] = None,
+                           include_video: bool = False, video: Optional[str] = None, all_frames: bool = False,
+                           accept_findings: bool = False) -> Dict[str, Any]:
+    """Zip the view page, a copy of the manifest with relative paths, the pictures used and the transcripts.
+
+    The video stays out unless include_video is true (it can be large, and it can be private). Before
+    anything is written the texts are checked for local paths, email addresses and keys: with findings
+    nothing is packed (ok=false) until the person has looked and accept_findings is true.
+    """
+    argv = ["pack"]
+    flag(argv, "--manifest", inside(manifest, "manifest"))
+    if output is not None:
+        flag(argv, "--output", inside(output, "output"))
+    switch(argv, "--include-video", include_video)
+    if video is not None:
+        flag(argv, "--video", inside(video, "video"))
+    switch(argv, "--all-frames", all_frames)
+    switch(argv, "--accept-findings", accept_findings)
+    flag(argv, "--within", work_root())
+    return run_script("evidence_manifest.py", argv, "view", timeout=1800)
+
+
 def evidence_manifest_lint(file: str, anywhere: bool = False) -> Dict[str, Any]:
     """Check the disclosure block of a written answer (a Markdown file) against the format."""
     argv = ["lint"]
@@ -488,7 +563,8 @@ def evidence_manifest_lint(file: str, anywhere: bool = False) -> Dict[str, Any]:
 TOOLS = [about, probe_capabilities, setup_plan, fetch_media, extract_media_assets, transcribe_local,
          align_transcript_frames, read_transcript, normalize_transcript, evidence_manifest_init,
          evidence_manifest_route, evidence_manifest_add, evidence_manifest_rate, evidence_manifest_verify,
-         evidence_manifest_render, evidence_manifest_lint]
+         evidence_manifest_render, evidence_manifest_lint, contact_sheet, evidence_manifest_view,
+         evidence_manifest_pack]
 
 
 # ---------------------------------------------------------------------------------------------

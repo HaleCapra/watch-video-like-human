@@ -1,5 +1,28 @@
 # Changelog
 
+## 5.6.0 (in progress)
+
+Three ways to look at the record after the tools have run. None adds evidence; the skill's
+version number and its existing behaviour are unchanged so far.
+
+- **Contact sheets** (`scripts/contact_sheet.py`): a set of frames on one picture, a label
+  (`#INDEX TIME`) under every tile. ffmpeg only (scale, pad, concat, tile, blend); the labels are
+  drawn as dots by the script, so there is no font and no new dependency. `add --kind
+  contact-sheets` records which frames a sheet is made of. A sheet that was opened counts as its
+  frames seen as tiles: the disclosure says "plus N seen only as tiles of a contact sheet (reduced
+  size)", `verify` lets a claim rest on such a frame and refuses on-screen text read off a sheet.
+  The rule is in `references/disclosure.md`.
+- **View page** (`evidence_manifest.py view`): one HTML file that opens offline - the disclosure,
+  a timeline of frames, transcript or caption lines, claims and open questions, a player when the
+  video is on the machine. Every frame is marked opened / seen as a tile / not opened by the rule
+  `verify` uses. No network, no CDN, no folder of the machine; text from the manifest is escaped.
+- **Review pack** (`evidence_manifest.py pack`): the page, a copy of the manifest with relative
+  paths, the pictures that were opened or cited and the transcripts in one zip. No video unless
+  `--include-video`. Texts are checked for local paths, email addresses and keys first; with
+  findings nothing is packed until `--accept-findings`.
+- **MCP**: `contact_sheet`, `evidence_manifest_view`, `evidence_manifest_pack` (inside the work
+  root like every tool; the page and the pack read nothing outside it).
+
 ## 5.5.0 (2026-11-27)
 
 The agent stays on the host and coordinates; Docker is a toolbox with no agent in it; MCP is the

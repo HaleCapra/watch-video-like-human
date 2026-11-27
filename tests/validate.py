@@ -2437,7 +2437,8 @@ def _():
 def _():
     files = sorted(p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*") if p.is_file())
     assert "references/browser-mcp.md" in files            # v5.5: one more reference, nothing else new in the package
-    assert len(files) == 24, files
+    assert "scripts/contact_sheet.py" in files             # v5.6: one more script (view and pack live in evidence_manifest.py)
+    assert len(files) == 25, files
     assert "scripts/setup_tools.py" in files and "scripts/transcribe_local.py" in files
     for rel in ("scripts/crop_frame_region.py", "scripts/read_transcript.py", "scripts/transcribe_cloud.py",
                 "references/note-workflow.md", "references/note-formats.md", "references/routes.md",

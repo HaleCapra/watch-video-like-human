@@ -141,6 +141,31 @@ level is not one of the allowed words, a `sampled` Visual line has no count or t
 Verdict does not follow from the ratings. It checks the form. It cannot check that the ratings
 are true - only the manifest can do that.
 
+## Contact sheets: seen as tiles (v5.6)
+
+`contact_sheet.py` puts many frames on one picture, each tile labelled `#INDEX TIME`. It is a way
+to look over a long video quickly and decide which frames to open. What it counts for follows
+from what was really done:
+
+- **A sheet nobody opened counts for nothing.** Making it is like extracting frames: files on disk.
+- **A sheet you opened counts as its frames seen as tiles.** List the sheet's id in
+  `--frames-inspected` (`E6.s001`). The Visual line then says so in words, and keeps the two
+  numbers apart: `3 of 40 actually looked at (...), plus 21 seen only as tiles of a contact sheet
+  (reduced size)`. Coverage repeats it: `3 of them inspected, 21 more only as contact-sheet tiles`.
+  When no frame was opened by itself the line starts `none of 40 opened at full size`.
+- **A tile is a frame at reduced size.** It is enough to say what kind of picture is where (a
+  slide, a face, a chart, a scene change). It is not enough for small text, numbers, option
+  letters or fine detail. For those, open the frame itself or a crop and list that id as well.
+  `verify` refuses on-screen text whose source is a sheet (`--on-screen-frames E6.s001`).
+- **Claims.** A claim may rest on a frame that was seen as a tile of an opened sheet, or on the
+  sheet itself. A frame that sits only on a sheet nobody opened supports nothing, as before.
+- The level stays `sampled`: tiles never make it `continuous`, and they do not change the Verdict.
+
+`evidence_manifest.py view` shows the same three states for every frame - opened at full size,
+seen only as a tile of a contact sheet, extracted and not opened - with the rule `verify` uses.
+The page and the review pack (`pack`) are ways to look at the record. Making them or opening
+them adds no evidence to any channel.
+
 ## Partial results (v5.4)
 
 - **Route** may end in `(partial - see the route history)`: one channel worked and the other did

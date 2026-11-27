@@ -141,3 +141,37 @@ python scripts/evidence_manifest.py rate -m $M ... --on-screen-text "on-screen t
   its own default) must never pass silently as the transcript.
 - The read log proves the transcript was *served* to the end, page by page. It cannot prove it
   was understood; that stays the reader's responsibility.
+
+**Contact sheets, the view page and the review pack (v5.6):**
+
+```bash
+python scripts/contact_sheet.py --frames WORK/frames.json                      # WORK/sheets/sheet_001.jpg ..., WORK/sheets.json
+python scripts/evidence_manifest.py add  -m $M --kind contact-sheets --path WORK/sheets.json --command "python scripts/contact_sheet.py ..."
+python scripts/evidence_manifest.py rate -m $M --visual sampled --frames-inspected E6.s001,E1.f004 ...
+python scripts/evidence_manifest.py view -m $M                                 # WORK/evidence_view.html
+python scripts/evidence_manifest.py pack -m $M --output WORK/review.zip        # add --include-video only when the person wants it
+```
+
+- `add --kind contact-sheets` records every sheet with its hash and the ids of the frames on it
+  (`E6.s001`, `E6.s002`, ...). The frames must be recorded first: a tile is matched to a recorded
+  frame by content, so an opened sheet can always be traced to frame ids. `verify` re-hashes the
+  sheets like every other file.
+- A sheet id in `--frames-inspected` means the sheet was opened; its frames then count as seen
+  as tiles. The rules (what a tile is worth, what it is not) are in `disclosure.md`.
+- `view` writes one HTML file: the disclosure, a timeline with frames, transcript or caption
+  lines, claims and open questions in time order, the contact sheets, and the recorded files.
+  Every frame carries its state - opened at full size, seen only as a tile, extracted and not
+  opened - by the rule `verify` uses, and a manifest that does not verify is shown as such. The
+  pictures are inside the file (`--link-pictures` links them instead); a video that is on the
+  machine is linked relatively and its times become buttons (`--no-video`, `--video FILE`). The
+  page loads nothing from the network and holds no folder of the machine; everything from the
+  manifest and the transcripts is shown as text, never used as markup.
+- `pack` zips the page, a copy of the manifest with relative paths, the disclosure, the pictures
+  that were opened or cited (`--all-frames` for every picture) and the transcripts, under one
+  `review/` folder. The video stays out unless `--include-video` is given. Before anything is
+  written, every text going in is checked for local paths, email addresses and things shaped
+  like keys; with findings nothing is packed and the report gives file, line and kind - look,
+  then pass `--accept-findings` if they belong (an address said in the video). The manifest in
+  the pack is a copy for reading: run `verify` on the original folder.
+- `--within DIR` (both commands) reads nothing outside that folder: a recorded file that lies
+  elsewhere is treated as not there.

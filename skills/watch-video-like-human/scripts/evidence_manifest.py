@@ -28,6 +28,13 @@ v5.3 - note-grade records
   python evidence_manifest.py issue -m M --start 03:05 --end 03:12 --summary "Option letter hidden by the cursor" --attempted "frames at 03:05 and 03:09" --attempted "crop of the answer row" --unresolved-reason "the letter is never uncovered"
   python evidence_manifest.py issue-update -m M --id I1 --status resolved --note "visible at 03:40, crop E5.c002"
   python evidence_manifest.py rate  ... --transcript-read full     # checked against read_transcript.py's read log
+
+v5.6 - contact sheets, a page to look at the record, a pack to hand it on
+-------------------------------------------------------------------------
+  python evidence_manifest.py add  -m M --kind contact-sheets --path WORK/sheets.json --command "python scripts/contact_sheet.py ..."
+  python evidence_manifest.py rate ... --frames-inspected E6.s001,E1.f004   # a sheet opened = its frames seen as tiles
+  python evidence_manifest.py view -m M                       # WORK/evidence_view.html: one file, opens offline
+  python evidence_manifest.py pack -m M --output review.zip   # the page, the manifest, the pictures used, the transcripts
   python evidence_manifest.py list  -m M                           # claims and issues as Markdown tables
 
 v5.4 - after real-video tests on Windows and macOS
@@ -166,12 +173,16 @@ def _private_tools_first():
 _private_tools_first()
 
 import argparse
+import base64
 import hashlib
+import html
 import json
 import re
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 SCHEMA = "evidence-manifest/1"
 SKILL_VERSION = "5.5"
@@ -180,7 +191,7 @@ ROUTES = {"0": "0 - user file", "A": "A - download", "B": "B - browser extractio
 KINDS = ["media", "audio", "frames", "captions", "transcript", "timeline", "visual_outline",
          "metadata", "screenshot", "continuous-analysis", "audio-native-analysis",
          "keyframe-analysis", "native-model-report", "crops", "evidence-draft", "notes",
-         "recording-check", "other"]
+         "recording-check", "contact-sheets", "other"]
 CAPTION_ORIGINS = {"human": "human-written captions", "auto-asr": "auto-generated (machine speech recognition) captions",
                    "translated": "machine-translated captions",
                    "human-translation": "captions translated by people (not the language spoken; a translation, "
@@ -548,6 +559,41 @@ def cmd_add(args) -> int:
         for crop in crops:
             crop["id"] = f"{artifact['id']}.c{int(crop['n'] or 0):03d}"
         added.append(artifact["id"])
+    elif args.kind == "contact-sheets":
+        # sheets.json from contact_sheet.py: which frames each sheet is made of. A frame on a sheet must be a
+        # recorded frame (same bytes), so that an opened sheet can be traced to frame ids.
+        meta = json.loads(target.read_text(encoding="utf-8"))
+        sheet_dir = Path(meta.get("sheets_dir", target.parent / "sheets"))
+        if not sheet_dir.is_dir():
+            sheet_dir = target.parent / "sheets"
+        frames_dir = Path(meta.get("frames_dir", target.parent / "frames"))
+        if not frames_dir.is_dir():
+            frames_dir = target.parent / "frames"
+        by_hash = {f["sha256"]: f["id"] for f in all_frames(manifest) if "id" in f}
+        sheets = []
+        for sheet in meta.get("sheets", []):
+            sheet_path = sheet_dir / sheet["file"]
+            if not sheet_path.is_file():
+                raise SystemExit(f"sheets.json lists a sheet that does not exist: {sheet_path}")
+            on_it = []
+            for frame in sheet.get("frames", []):
+                frame_path = frames_dir / frame["file"]
+                frame_id = by_hash.get(sha256_file(frame_path)) if frame_path.is_file() else None
+                if frame_id is None:
+                    raise SystemExit(f"{sheet['file']} holds {frame['file']}, which is not a recorded frame (or has "
+                                     "changed). Record the frames first: add --kind frames --path frames.json")
+                on_it.append({"id": frame_id, "time_seconds": frame.get("time_seconds"), "cell": frame.get("cell")})
+            if not on_it:
+                raise SystemExit(f"{sheet['file']} lists no frames.")
+            sheets.append({"n": sheet.get("index"), "columns": sheet.get("columns"), "rows": sheet.get("rows"),
+                           "tile_width": sheet.get("tile_width"), "tile_height": sheet.get("tile_height"),
+                           "frames": on_it, **file_record(sheet_path, path)})
+        if not sheets:
+            raise SystemExit("sheets.json lists no sheets.")
+        artifact = add_artifact(manifest, path, "contact-sheets", target, args.command, args.note, {"sheets": sheets})
+        for sheet in sheets:
+            sheet["id"] = f"{artifact['id']}.s{int(sheet['n'] or 0):03d}"
+        added.append(artifact["id"])
     else:
         details = {}
         if args.kind in ("transcript", "captions"):
@@ -638,10 +684,12 @@ def all_crops(manifest: dict) -> list[dict]:
 
 
 def viewable_ids(manifest: dict) -> set[str]:
-    """Everything that is a picture the answering model can open: frames, crops, screenshots."""
+    """Everything that is a picture the answering model can open: frames, crops, screenshots, contact sheets."""
     return ({f["id"] for f in all_frames(manifest) if "id" in f}
             | {c["id"] for c in all_crops(manifest) if "id" in c}
-            | {a["id"] for a in of_kind(manifest, "screenshot")})
+            | {a["id"] for a in of_kind(manifest, "screenshot")}
+            | {s["id"] for a in of_kind(manifest, "contact-sheets")
+               for s in a.get("details", {}).get("sheets", []) if "id" in s})
 
 
 def known_ids(manifest: dict) -> set[str]:
@@ -993,6 +1041,15 @@ def check(manifest: dict, manifest_path: Path) -> tuple[list[str], list[str]]:
                 errors.append(f"{crop.get('id')}: crop file missing: {crop['path']}")
             elif sha256_file(crop_file) != crop["sha256"]:
                 errors.append(f"{crop.get('id')}: crop file changed since it was recorded")
+        for sheet in artifact.get("details", {}).get("sheets", []):
+            sheet_file = resolve(sheet, manifest_path)
+            if sheet_file is None:
+                errors.append(f"{sheet.get('id')}: contact sheet file missing: {sheet['path']}")
+            elif sha256_file(sheet_file) != sheet["sha256"]:
+                errors.append(f"{sheet.get('id')}: contact sheet file changed since it was recorded")
+            for frame in sheet.get("frames", []):
+                if frame.get("id") not in ids:
+                    errors.append(f"{sheet.get('id')} is made of {frame.get('id')}, which is not a recorded frame")
 
     route = manifest.get("route", {})
     history = route.get("history", [])
@@ -1049,6 +1106,12 @@ def check(manifest: dict, manifest_path: Path) -> tuple[list[str], list[str]]:
     for ref in ratings["on_screen_text"]["frames_read"]:
         if inspected and ref not in inspected:
             errors.append(f"on-screen text was read from {ref}, which is not listed in --frames-inspected")
+    sheet_ids = {s["id"] for s in all_sheets(manifest) if "id" in s}
+    seen_as_tiles = tiles_seen(manifest, inspected)
+    for ref in ratings["on_screen_text"]["frames_read"]:
+        if ref in sheet_ids:
+            errors.append(f"on-screen text was read from {ref}, a contact sheet: a tile is a frame at reduced "
+                          "size. Open the frame itself (or a crop) and cite that")
 
     audio = ratings["audio"]["level"]
     alignment_level = ratings["alignment"]["level"]
@@ -1186,7 +1249,7 @@ def check(manifest: dict, manifest_path: Path) -> tuple[list[str], list[str]]:
         for ref in claim.get("frames", []):
             if ref not in viewable:
                 errors.append(f"claim {cid} cites {ref}, which is not a recorded frame, crop or screenshot")
-            elif ref not in inspected:
+            elif ref not in inspected and ref not in seen_as_tiles:
                 errors.append(f"claim {cid} rests on {ref}, which is not listed in --frames-inspected: "
                               "a picture nobody opened supports nothing")
         cited = claim.get("transcript")
@@ -1238,6 +1301,7 @@ def cmd_verify(args) -> int:
     print(json.dumps({"ok": not errors, "errors": errors, "warnings": warnings,
                       "artifacts": len(manifest["artifacts"]), "frames": len(all_frames(manifest)),
                       "crops": len(all_crops(manifest)), "claims": len(manifest.get("claims", [])),
+                      **({"contact_sheets": len(all_sheets(manifest))} if all_sheets(manifest) else {}),
                       "open_issues": sum(1 for i in manifest.get("issues", []) if i["status"] == "open")},
                      indent=2))
     return 0 if not errors else 1
@@ -1245,6 +1309,539 @@ def cmd_verify(args) -> int:
 
 def refs(ids: list[str]) -> str:
     return f" [{', '.join(ids)}]" if ids else ""
+
+
+# ---------------------------------------------------------------- view page and review pack (v5.6)
+
+SEEN_LABELS = {"opened": "opened at full size", "tile": "seen only as a tile of a contact sheet",
+               "not-opened": "extracted, not opened"}
+SOURCE_LABELS = {"asr": "speech recognised on this machine", "cloud-asr": "speech recognised by a cloud service",
+                 "captions": "caption text (read, not heard)", "manual": "text supplied by hand"}
+_PLACEHOLDER = r"(?:<[^>\\/]*>|USER(?:NAME)?|NAME|YOU|you|username|user|Public|Default|runner|\$\w+|%\w+%|\{\w+\}|\.\.\.)"
+PRIVATE_RULES = [
+    ("windows-user-path", re.compile(r"[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}(?!" + _PLACEHOLDER
+                                     + r"(?:[\\/\s\"'`,.)]|$))[^\\/\s\"'`<>|]+")),
+    ("mac-user-path", re.compile(r"(?<![\w.~])/" + "Users/(?!" + _PLACEHOLDER + r"(?:[/\s\"'`,.)]|$))[^/\s\"'`<>]+")),
+    ("home-path", re.compile(r"(?<![\w.~])/" + "home/(?!" + _PLACEHOLDER + r"(?:[/\s\"'`,.)]|$))[^/\s\"'`<>]+")),
+    ("email", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")),
+    ("api-key", re.compile(r"(?:sk-[A-Za-z0-9]{20,}|gsk_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_\w{30,}|"
+                           r"AIza[0-9A-Za-z_-]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|"
+                           r"-----BEGIN [A-Z ]*PRIVATE KEY-----)")),
+]
+_ALLOWED_EMAIL = re.compile(r"@(?:example\.(?:com|org|net)|[\w.-]*\.invalid|users\.noreply\.github\.com)$|^noreply@", re.I)
+VIEW_CSP = ("default-src 'none'; img-src data: file: 'self'; media-src file: blob: 'self'; "
+            "style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
+VIEW_STYLE = """
+:root { color-scheme: light dark; --bg:#fbfbf9; --fg:#1d1d1b; --mute:#63635e; --line:#d9d8d2; --card:#ffffff;
+        --ok:#1a7f4b; --tile:#9a6700; --no:#b42318; --accent:#2f5aa8; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecece7; --mute:#a3a29b; --line:#35352f;
+        --card:#1f1f1d; --ok:#5fd08f; --tile:#e3b341; --no:#ff8a80; --accent:#8fb2f0; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width:1100px; margin:0 auto; padding:16px; }
+h1 { font-size:22px; margin:8px 0 4px; } h2 { font-size:17px; margin:28px 0 8px; border-bottom:1px solid var(--line); padding-bottom:4px; }
+.mute { color:var(--mute); } .small { font-size:13px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:10px 0; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; font:13px/1.5 ui-monospace, Consolas, monospace; }
+table { border-collapse:collapse; width:100%; } th, td { text-align:left; vertical-align:top; padding:6px 8px; border-top:1px solid var(--line); }
+th { font-size:13px; color:var(--mute); font-weight:600; border-top:none; }
+.scroll { overflow-x:auto; }
+.t { font:13px ui-monospace, Consolas, monospace; white-space:nowrap; }
+button.t { border:1px solid var(--line); background:transparent; color:var(--accent); border-radius:5px; padding:1px 6px; cursor:pointer; }
+.badge { display:inline-block; font-size:12px; border-radius:10px; padding:0 8px; border:1px solid currentColor; white-space:nowrap; }
+.opened { color:var(--ok); } .tile { color:var(--tile); } .not-opened { color:var(--no); }
+.kind { color:var(--mute); font-size:12px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; }
+img.frame { max-width:260px; width:100%; height:auto; border:1px solid var(--line); border-radius:4px; display:block; }
+img.sheet { max-width:100%; height:auto; border:1px solid var(--line); border-radius:4px; }
+.gone { border:1px dashed var(--line); border-radius:4px; padding:10px; color:var(--mute); font-size:13px; max-width:260px; }
+video { width:100%; max-height:60vh; background:#000; border-radius:8px; }
+.player { position:sticky; top:0; background:var(--bg); padding:8px 0; z-index:2; }
+.bad { border-color:var(--no); } .counts span { margin-right:14px; white-space:nowrap; }
+"""
+VIEW_SCRIPT = """
+document.addEventListener('click', function (event) {
+  var button = event.target.closest('button[data-t]');
+  var player = document.getElementById('player');
+  if (!button || !player) { return; }
+  player.currentTime = parseFloat(button.getAttribute('data-t')) || 0;
+  player.play();
+});
+"""
+
+
+def all_sheets(manifest: dict) -> list[dict]:
+    return [s for a in of_kind(manifest, "contact-sheets") for s in a.get("details", {}).get("sheets", [])]
+
+
+def tiles_seen(manifest: dict, inspected: list[str] | None = None) -> set[str]:
+    """Frames seen ONLY as tiles: they are on a contact sheet that was opened, and were not opened themselves."""
+    if inspected is None:
+        inspected = ((manifest.get("ratings") or {}).get("visual") or {}).get("inspected", [])
+    opened = set(inspected)
+    on_opened_sheets = {f["id"] for s in all_sheets(manifest) if s.get("id") in opened
+                        for f in s.get("frames", []) if f.get("id")}
+    return on_opened_sheets - opened
+
+
+def seen_status(manifest: dict) -> dict:
+    """picture id -> 'opened' | 'tile' | 'not-opened', by the same rule verify and render use."""
+    inspected = set(((manifest.get("ratings") or {}).get("visual") or {}).get("inspected", []))
+    tiles = tiles_seen(manifest, list(inspected))
+    return {i: "opened" if i in inspected else "tile" if i in tiles else "not-opened"
+            for i in viewable_ids(manifest)}
+
+
+def scrubber(manifest_path: Path):
+    """A function that takes this machine's folders out of a text: the work folder becomes '.', home '~'."""
+    swaps: list[tuple[str, str]] = []
+    for folder, short in ((manifest_path.parent, "."), (Path.home(), "~")):
+        for form in {str(folder), str(folder).replace("\\", "/"), str(folder).replace("\\", "\\\\")}:
+            if len(form) > 3:
+                swaps.append((form, short))
+    swaps.sort(key=lambda pair: -len(pair[0]))
+
+    def scrub(value) -> str:
+        text = "" if value is None else str(value)
+        for form, short in swaps:
+            if form in text:
+                text = text.replace(form, short)
+            elif form.lower() in text.lower():
+                text = re.sub(re.escape(form), lambda _m: short, text, flags=re.I)
+        return text
+    return scrub
+
+
+def private_findings(name: str, text: str) -> list[dict]:
+    found = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        for kind, pattern in PRIVATE_RULES:
+            for match in pattern.finditer(line):
+                if kind == "email" and _ALLOWED_EMAIL.search(match.group(0)):
+                    continue
+                found.append({"file": name, "line": number, "kind": kind})
+                break
+    return found
+
+
+def fence(within: str | None):
+    """locate(record, manifest_path): like resolve(), but a file outside `within` counts as not there."""
+    root = Path(os.path.realpath(str(Path(within).expanduser()))) if within else None
+    if root is not None and not root.is_dir():
+        raise SystemExit(f"--within: not a folder: {root}")
+
+    def allowed(found: Path | None) -> Path | None:
+        if found is None or root is None:
+            return found
+        try:
+            Path(os.path.realpath(str(found))).relative_to(root)
+        except ValueError:
+            return None
+        return found
+
+    def locate(record: dict, manifest_path: Path) -> Path | None:
+        return allowed(resolve(record, manifest_path))
+    locate.allowed = allowed
+    return locate
+
+
+def data_uri(path: Path) -> str:
+    kind = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(
+        path.suffix.lower(), "application/octet-stream")
+    return f"data:{kind};base64," + base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def view_page(manifest: dict, manifest_path: Path, picture, video_href: str | None, video_note: str,
+              where: str, locate=resolve) -> str:
+    """The whole page as one string. `picture(record)` gives the src of a recorded picture, or None.
+
+    Everything that comes from the manifest or from a file is escaped as text. Nothing of it is used
+    as markup, as a link or as script; the only script is the fixed one that moves the player.
+    """
+    scrub = scrubber(manifest_path)
+
+    def esc(value) -> str:
+        return html.escape(scrub(value), quote=True)
+
+    def stamp(seconds, end=None) -> str:
+        if seconds is None:
+            return '<span class="t mute">no time</span>'
+        text = clock(float(seconds)) + (f"-{clock(float(end))}" if end is not None and end != seconds else "")
+        if video_href:
+            return f'<button class="t" type="button" data-t="{float(seconds):.3f}">{esc(text)}</button>'
+        return f'<span class="t">{esc(text)}</span>'
+
+    def badge(state: str) -> str:
+        return f'<span class="badge {state}">{esc(SEEN_LABELS[state])}</span>'
+
+    def shown(record: dict, css: str, alt: str) -> str:
+        src = picture(record)
+        if not src:
+            return f'<div class="gone">{esc(alt)}: the picture is not here</div>'
+        return f'<img class="{css}" loading="lazy" alt="{esc(alt)}" src="{html.escape(src, quote=True)}">'
+
+    ratings = manifest.get("ratings") or {}
+    status = seen_status(manifest)
+    errors, warnings = check(manifest, manifest_path)
+    source = manifest.get("source", {})
+    origin = str(source.get("input") or "")
+    origin_text = origin if re.match(r"https?://", origin) else (Path(origin).name or "unknown")
+    frames = sorted(all_frames(manifest), key=lambda f: f["time_seconds"])
+    crops = all_crops(manifest)
+    shots = of_kind(manifest, "screenshot")
+    sheets = all_sheets(manifest)
+    counts = {state: sum(1 for f in frames if status.get(f.get("id")) == state) for state in SEEN_LABELS}
+
+    out = ["<!doctype html>", '<html lang="en"><head><meta charset="utf-8">',
+           f'<meta http-equiv="Content-Security-Policy" content="{html.escape(VIEW_CSP, quote=True)}">',
+           '<meta name="viewport" content="width=device-width, initial-scale=1">',
+           '<meta name="referrer" content="no-referrer">',
+           f"<title>{esc(source.get('title') or origin_text)} - evidence view</title>",
+           f"<style>{VIEW_STYLE}</style></head><body><main>",
+           f"<h1>{esc(source.get('title') or origin_text)}</h1>",
+           f'<p class="mute small">Source: {esc(origin_text)} &middot; evidence view made {esc(now())} from '
+           f"{esc(manifest_path.name)} &middot; {esc(where)} &middot; this page loads nothing from the network</p>"]
+
+    if errors:
+        out.append('<div class="card bad" id="verify"><strong>The manifest does not verify.</strong> '
+                   "What the page shows is on record, but the disclosure is not supported by the files:<pre>"
+                   + esc("\n".join(errors)) + "</pre></div>")
+    else:
+        out.append('<div class="card" id="verify"><strong>The manifest verifies</strong>: every recorded file is '
+                   "present and unchanged, and the ratings match them."
+                   + (f'<pre class="mute">{esc(chr(10).join(warnings))}</pre>' if warnings else "") + "</div>")
+
+    out.append('<h2 id="disclosure">What was actually done</h2>')
+    if ratings:
+        out.append(f'<div class="card"><pre>{esc(render_block(manifest))}</pre></div>')
+    else:
+        out.append('<div class="card bad">No ratings are recorded yet, so there is no disclosure.</div>')
+    out.append('<p class="counts small" id="seen-counts">'
+               + "".join(f'<span>{badge(state)} {counts[state]} frame{"" if counts[state] == 1 else "s"}</span>'
+                         for state in SEEN_LABELS) + "</p>")
+
+    out.append('<h2 id="video">Video</h2>')
+    if video_href:
+        out.append('<div class="player"><video id="player" controls preload="metadata" src="'
+                   + html.escape(video_href, quote=True) + '"></video></div>'
+                   '<p class="mute small">Click a time below to jump there.</p>')
+    else:
+        out.append(f'<p class="mute" id="no-video">{esc(video_note)}</p>')
+
+    # ---- the timeline: everything that has a time, in order
+    rows: list[tuple[float, int, str]] = []
+    for frame in frames:
+        state = status.get(frame.get("id"), "not-opened")
+        cell = (shown(frame, "frame", f"frame {frame.get('id')}") if state != "not-opened" or picture(frame)
+                else f'<div class="gone">{esc(frame.get("id"))}: the picture is not here</div>')
+        rows.append((frame["time_seconds"], 0,
+                     f'<tr class="row-frame" data-seen="{state}"><td>{stamp(frame["time_seconds"])}</td>'
+                     f'<td><span class="kind">frame</span><br><span class="t">{esc(frame.get("id"))}</span></td>'
+                     f"<td>{cell}{badge(state)} <span class=\"mute small\">{esc(frame.get('reason') or '')}</span></td></tr>"))
+    for crop in crops:
+        state = status.get(crop.get("id"), "not-opened")
+        rows.append((crop.get("time_seconds") or 0.0, 1,
+                     f'<tr class="row-crop" data-seen="{state}"><td>{stamp(crop.get("time_seconds"))}</td>'
+                     f'<td><span class="kind">crop</span><br><span class="t">{esc(crop.get("id"))}</span></td>'
+                     f"<td>{shown(crop, 'frame', 'crop ' + str(crop.get('id')))}{badge(state)}</td></tr>"))
+    for shot in shots:
+        state = status.get(shot["id"], "not-opened")
+        when = (shot.get("details") or {}).get("time_seconds")
+        rows.append((when or 0.0, 1,
+                     f'<tr class="row-shot" data-seen="{state}"><td>{stamp(when)}</td>'
+                     f'<td><span class="kind">page screenshot</span><br><span class="t">{esc(shot["id"])}</span></td>'
+                     f"<td>{shown(shot, 'frame', 'screenshot ' + shot['id'])}{badge(state)}</td></tr>"))
+    for artifact in of_kind(manifest, "transcript", "captions"):
+        found = locate(artifact, manifest_path)
+        details = artifact.get("details") or {}
+        label = SOURCE_LABELS.get(details.get("transcript_source") or "", "text")
+        if artifact["kind"] == "captions":
+            label = SOURCE_LABELS["captions"]
+        language = details.get("language") or ""
+        if found is None:
+            continue
+        try:
+            segments = transcript_segments(found)
+        except (OSError, ValueError):
+            continue
+        for number, segment in enumerate(segments, start=1):
+            start = segment.get("start")
+            rows.append((start if start is not None else 0.0, 2,
+                         f'<tr class="row-text"><td>{stamp(start, segment.get("end"))}</td>'
+                         f'<td><span class="kind">{esc(label)}</span><br><span class="t">{esc(artifact["id"])} #{number}'
+                         f"{' ' + esc(language) if language else ''}</span></td>"
+                         f"<td>{esc(segment.get('text', ''))}</td></tr>"))
+    for claim in manifest.get("claims", []):
+        if claim.get("start") is None or claim.get("status") == "withdrawn":
+            continue
+        rows.append((claim["start"], 3,
+                     f'<tr class="row-claim"><td>{stamp(claim["start"], claim.get("end"))}</td>'
+                     f'<td><span class="kind">claim</span><br><span class="t">{esc(claim["id"])}</span></td>'
+                     f"<td><strong>{esc(claim.get('text', ''))}</strong><br><span class=\"mute small\">"
+                     f"{esc(claim.get('assessment') or 'unassessed')} &middot; rests on "
+                     f"{esc(', '.join(dict.fromkeys(claim.get('frames', []) + claim.get('evidence', []))) or 'transcript only')}</span></td></tr>"))
+    for issue in manifest.get("issues", []):
+        if issue.get("start") is None:
+            continue
+        rows.append((issue["start"], 4,
+                     f'<tr class="row-issue"><td>{stamp(issue["start"], issue.get("end"))}</td>'
+                     f'<td><span class="kind">open question</span><br><span class="t">{esc(issue.get("id"))}</span></td>'
+                     f"<td>{esc(issue.get('summary', ''))} <span class=\"badge\">{esc(issue.get('status', ''))}</span></td></tr>"))
+    rows.sort(key=lambda row: (row[0], row[1]))
+    out.append('<h2 id="timeline">Timeline</h2>')
+    if rows:
+        out.append('<div class="scroll"><table id="timeline-table"><thead><tr><th>Time</th><th>What</th><th>Content</th></tr></thead><tbody>'
+                   + "\n".join(row[2] for row in rows) + "</tbody></table></div>")
+    else:
+        out.append('<p class="mute">Nothing with a time is recorded.</p>')
+
+    if sheets:
+        out.append('<h2 id="sheets">Contact sheets</h2><p class="mute small">A tile is a frame at reduced size: '
+                   "enough to see what kind of picture is where, not enough for small text.</p>")
+        for sheet in sheets:
+            state = "opened" if status.get(sheet.get("id")) == "opened" else "not-opened"
+            members = ", ".join(str(f.get("id")) for f in sheet.get("frames", []))
+            out.append(f'<div class="card">{shown(sheet, "sheet", "contact sheet " + str(sheet.get("id")))}'
+                       f'<p class="small"><span class="t">{esc(sheet.get("id"))}</span> '
+                       f'<span class="badge {state}">{"opened" if state == "opened" else "made, not opened"}</span> '
+                       f'<span class="mute">frames on it: {esc(members)}</span></p></div>')
+
+    out.append('<h2 id="claims">Claims</h2>')
+    claims = manifest.get("claims", [])
+    if claims:
+        out.append('<div class="scroll"><table id="claims-table"><thead><tr><th>Id</th><th>Time</th><th>Statement</th>'
+                   "<th>Judgement</th><th>Rests on</th></tr></thead><tbody>")
+        for claim in claims:
+            cited = list(dict.fromkeys(claim.get("frames", []) + claim.get("evidence", [])))
+            segments = (claim.get("transcript") or {}).get("segments") or []
+            basis = ", ".join(cited) + (f"; transcript segments {', '.join(str(n) for n in segments)}" if segments else "")
+            out.append(f'<tr><td class="t">{esc(claim["id"])}</td><td>{stamp(claim.get("start"), claim.get("end"))}</td>'
+                       f"<td>{esc(claim.get('text', ''))}"
+                       + (f'<br><span class="mute small">{esc(claim.get("reasoning"))}</span>' if claim.get("reasoning") else "")
+                       + f"</td><td>{esc(claim.get('assessment') or 'unassessed')}"
+                       + (f' <span class="badge not-opened">{esc(claim.get("status"))}</span>'
+                          if claim.get("status") == "withdrawn" else "")
+                       + f"</td><td class=\"small\">{esc(basis)}</td></tr>")
+        out.append("</tbody></table></div>")
+    else:
+        out.append('<p class="mute">No claim is recorded.</p>')
+
+    out.append('<h2 id="issues">Open questions</h2>')
+    issues = manifest.get("issues", [])
+    if issues:
+        out.append('<div class="scroll"><table id="issues-table"><thead><tr><th>Id</th><th>Time</th><th>What could not be settled</th>'
+                   "<th>Status</th></tr></thead><tbody>")
+        for issue in issues:
+            out.append(f'<tr><td class="t">{esc(issue.get("id"))}</td><td>{stamp(issue.get("start"), issue.get("end"))}</td>'
+                       f"<td>{esc(issue.get('summary', ''))}"
+                       + (f'<br><span class="mute small">{esc(issue.get("details"))}</span>' if issue.get("details") else "")
+                       + f"</td><td>{esc(issue.get('status', ''))}</td></tr>")
+        out.append("</tbody></table></div>")
+    else:
+        out.append('<p class="mute">No open question is recorded.</p>')
+    if manifest.get("gaps"):
+        out.append('<h2 id="gaps">Known gaps</h2><ul>' + "".join(f"<li>{esc(g)}</li>" for g in manifest["gaps"]) + "</ul>")
+
+    out.append('<h2 id="files">Recorded files</h2><div class="scroll"><table id="files-table"><thead><tr><th>Id</th><th>Kind</th>'
+               "<th>File</th><th>SHA-256</th><th>Made by</th></tr></thead><tbody>")
+    for artifact in manifest["artifacts"]:
+        out.append(f'<tr><td class="t">{esc(artifact["id"])}</td><td>{esc(artifact["kind"])}</td>'
+                   f'<td class="small">{esc(artifact.get("relpath") or Path(artifact["path"]).name)}</td>'
+                   f'<td class="t small">{esc(artifact["sha256"][:16])}&hellip;</td>'
+                   f'<td class="small">{esc(artifact.get("produced_by", ""))}</td></tr>')
+    out.append("</tbody></table></div>")
+    out.append(f"<script>{VIEW_SCRIPT}</script></main></body></html>")
+    return "\n".join(out) + "\n"
+
+
+def relative_href(target: Path, page_dir: Path) -> str | None:
+    """A relative link from the page's folder to a file, or None when there is no relative way (another drive)."""
+    try:
+        return quote(Path(os.path.relpath(str(target), str(page_dir))).as_posix())
+    except ValueError:
+        return None
+
+
+def find_video(manifest: dict, manifest_path: Path, given: str | None) -> Path | None:
+    if given:
+        path = Path(given).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"--video: file not found: {path}")
+        return path
+    for artifact in of_kind(manifest, "media"):
+        found = resolve(artifact, manifest_path)
+        if found is not None:
+            return found
+    origin = str(manifest.get("source", {}).get("input") or "")
+    if origin and not re.match(r"https?://", origin) and Path(origin).is_file():
+        return Path(origin)
+    return None
+
+
+def cmd_view(args) -> int:
+    path = Path(args.manifest).expanduser().resolve()
+    manifest = load(path)
+    output = Path(args.output).expanduser().resolve() if args.output else path.parent / "evidence_view.html"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    locate = fence(args.within)
+    video = None if args.no_video else locate.allowed(find_video(manifest, path, args.video))
+    href = relative_href(video, output.parent) if video else None
+    note = ("No video is linked (--no-video)." if args.no_video else
+            "The video file is not on this machine, so there is no player. Times are shown as text."
+            if video is None else
+            "The video is on another drive than this page and cannot be linked relatively. Times are shown as text.")
+    embedded = {"bytes": 0, "pictures": 0}
+
+    def picture(record: dict) -> str | None:
+        found = locate(record, path)
+        if found is None:
+            return None
+        if args.link_pictures:
+            return relative_href(found, output.parent)
+        embedded["bytes"] += found.stat().st_size
+        embedded["pictures"] += 1
+        return data_uri(found)
+
+    page = view_page(manifest, path, picture, href, note,
+                     "pictures linked beside this page" if args.link_pictures else "pictures inside this file", locate)
+    output.write_text(page, encoding="utf-8")
+    status = seen_status(manifest)
+    frame_ids = [f.get("id") for f in all_frames(manifest)]
+    print(json.dumps({"view": str(output), "bytes": output.stat().st_size, "single_file": not args.link_pictures,
+                      "pictures_embedded": embedded["pictures"], "video_linked": bool(href),
+                      "frames": {state: sum(1 for i in frame_ids if status.get(i) == state) for state in SEEN_LABELS},
+                      "verifies": not check(manifest, path)[0],
+                      "note": "The page is a way to look at the record. It is not evidence, and opening it "
+                              "is not looking at the frames on behalf of the answer."}, indent=2))
+    return 0
+
+
+def cmd_pack(args) -> int:
+    path = Path(args.manifest).expanduser().resolve()
+    manifest = load(path)
+    output = Path(args.output).expanduser().resolve() if args.output else path.parent / "review_pack.zip"
+    scrub = scrubber(path)
+    locate = fence(args.within)
+    ratings = manifest.get("ratings") or {}
+    status = seen_status(manifest)
+    cited = set(ratings.get("visual", {}).get("inspected", [])) | set((ratings.get("on_screen_text") or {}).get("frames_read", []))
+    for claim in manifest.get("claims", []):
+        if claim.get("status") != "withdrawn":          # a withdrawn claim is no longer part of the answer
+            cited |= set(claim.get("frames", []))
+    for issue in manifest.get("issues", []):
+        cited |= set(issue.get("frames", []) or [])
+
+    members: dict[str, Path] = {}          # name inside the pack -> file on disk
+    packed: dict[str, str] = {}            # picture / artifact id -> name inside the pack
+    left_out: list[str] = []
+
+    def take(record: dict, ident: str) -> None:
+        found = locate(record, path)
+        if found is None:
+            left_out.append(f"{ident} (file missing or outside the allowed folder)")
+            return
+        name = "files/" + re.sub(r"[^A-Za-z0-9._-]", "_", f"{ident}{found.suffix.lower()}")
+        members[name] = found
+        packed[ident] = name
+
+    for frame in all_frames(manifest):
+        if args.all_frames or frame.get("id") in cited:
+            take(frame, frame["id"])
+        else:
+            left_out.append(f"{frame.get('id')} ({SEEN_LABELS[status.get(frame.get('id'), 'not-opened')]})")
+    for crop in all_crops(manifest):
+        take(crop, crop["id"]) if (args.all_frames or crop.get("id") in cited) else left_out.append(f"{crop.get('id')} (crop, not opened)")
+    for sheet in all_sheets(manifest):
+        take(sheet, sheet["id"]) if (args.all_frames or sheet.get("id") in cited) else left_out.append(f"{sheet.get('id')} (contact sheet, not opened)")
+    for artifact in manifest["artifacts"]:
+        if artifact["kind"] == "screenshot" and (args.all_frames or artifact["id"] in cited):
+            take(artifact, artifact["id"])
+        elif artifact["kind"] in ("transcript", "captions"):
+            take(artifact, artifact["id"])
+        elif artifact["kind"] not in ("frames", "crops", "contact-sheets"):
+            left_out.append(f"{artifact['id']} ({artifact['kind']})")
+
+    video = locate.allowed(find_video(manifest, path, args.video)) if args.include_video else None
+    video_name = None
+    if video is not None:
+        video_name = "media/" + re.sub(r"[^A-Za-z0-9._-]", "_", video.name)
+        members[video_name] = video
+
+    def picture(record: dict) -> str | None:
+        ident = record.get("id")
+        return quote(packed[ident]) if ident in packed else None
+
+    note = ("The video is not in this pack (it can be large, and it can be private). Times are shown as text."
+            if not args.include_video else "The video file was not found, so it is not in this pack.")
+    page = view_page(manifest, path, picture, quote(video_name) if video_name else None, note, "review pack", locate)
+
+    copy = json.loads(json.dumps(manifest))
+
+    def clean(node):
+        if isinstance(node, dict):
+            if "path" in node and "sha256" in node:
+                ident = node.get("id")
+                node["in_pack"] = packed.get(ident)
+                node["path"] = packed.get(ident) or Path(str(node["path"])).name
+                node.pop("relpath", None)
+            return {key: clean(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [clean(value) for value in node]
+        if not isinstance(node, str):
+            return node
+        text = scrub(node)
+        # A value that is nothing but a path to somewhere else on this machine: keep the file name only.
+        if "\n" not in text and re.match(r"(?:~|[A-Za-z]:|)[\\/]", text) and not re.match(r"https?://", text):
+            text = "(elsewhere)/" + re.split(r"[\\/]", text.rstrip("\\/"))[-1]
+        return text
+
+    copy = clean(copy)
+    origin = str(copy.get("source", {}).get("input") or "")
+    if origin and not re.match(r"https?://", origin):
+        copy["source"]["input"] = Path(origin.replace("\\", "/")).name
+    copy["review_pack"] = {"made": now(), "note": "A copy for reading. Paths were made relative and files were "
+                                                  "left out, so run `verify` on the original folder, not on this copy.",
+                           "left_out": left_out, "video_included": bool(video_name)}
+    texts = {"index.html": page,
+             "evidence_manifest.json": json.dumps(copy, indent=2, ensure_ascii=False) + "\n",
+             "README.txt": ("Review pack made by watch-video-like-human (evidence_manifest.py pack).\n\n"
+                            "index.html                the evidence view; open it in a browser, it loads nothing from the network\n"
+                            "evidence_manifest.json    a copy of the manifest with relative paths (for reading, not for `verify`)\n"
+                            "disclosure.md             the disclosure block, when the manifest has ratings\n"
+                            "files/                    the pictures that were opened or cited, and the transcripts\n"
+                            + ("media/                    the video\n" if video_name else "")
+                            + f"\nLeft out: {len(left_out)} item(s); they are listed in evidence_manifest.json under review_pack.\n"
+                            + ("The video is not included.\n" if not video_name else ""))}
+    if ratings:
+        texts["disclosure.md"] = scrub(render_block(manifest)) + "\n"
+
+    findings: list[dict] = []
+    for name, text in texts.items():
+        findings += private_findings(name, text)
+    for name, source in members.items():
+        if source.suffix.lower() in (".srt", ".vtt", ".json", ".txt", ".md", ".csv"):
+            findings += private_findings(name, source.read_text(encoding="utf-8", errors="replace"))
+    if findings and not args.accept_findings:
+        print(json.dumps({"ok": False, "findings": findings}, indent=2))
+        raise SystemExit(f"{len(findings)} line(s) look like a local path, an email address or a key. Nothing was "
+                         "packed. Look at them; if they belong in the pack (an address said in the video, for "
+                         "example), run again with --accept-findings.")
+
+    top = "review/"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as pack:
+        for name, text in texts.items():
+            pack.writestr(top + name, text.encode("utf-8"))
+        for name, source in sorted(members.items()):
+            pack.write(str(source), top + name)
+    with zipfile.ZipFile(output) as pack:
+        names = pack.namelist()
+        assert pack.testzip() is None
+        assert all(n.startswith(top) and "\\" not in n and ".." not in n.split("/") and ":" not in n for n in names), names
+    print(json.dumps({"ok": True, "pack": str(output), "bytes": output.stat().st_size, "files": len(names),
+                      "pictures": sum(1 for n in names if n.startswith(top + "files/") and not n.endswith((".srt", ".vtt", ".json", ".txt"))),
+                      "video_included": bool(video_name), "left_out": len(left_out),
+                      "findings_accepted": findings if args.accept_findings else []}, indent=2))
+    return 0
 
 
 def render_block(manifest: dict) -> str:
@@ -1281,10 +1878,16 @@ def render_block(manifest: dict) -> str:
         for stamp in sorted(by_id[i]["time_seconds"] for i in seen):
             seen_clock[clock(stamp)] = seen_clock.get(clock(stamp), 0) + 1
         seen_times = ", ".join(label if n == 1 else f"{label} x{n}" for label, n in seen_clock.items())
+        tiles_only = [i for i in sorted(tiles_seen(manifest, visual.get("inspected", []))) if i in by_id]
         if len(seen) >= len(frames):
             looked = f"all {len(frames)} looked at"
+        elif not seen and tiles_only:
+            looked = f"none of {len(frames)} opened at full size"
         else:
             looked = f"{len(seen)} of {len(frames)} actually looked at ({seen_times})"
+        if tiles_only:
+            looked += (f", plus {len(tiles_only)} seen only as tile{'s' if len(tiles_only) != 1 else ''} of a "
+                       "contact sheet (reduced size)")
         if seen_crops:
             looked += f", plus {len(seen_crops)} region crop{'s' if len(seen_crops) != 1 else ''}"
         visual_line = f"sampled - {looked}; {len(frames)} frames extracted ({mix}) at {shown}{more}"
@@ -1366,8 +1969,10 @@ def render_block(manifest: dict) -> str:
     if frames:
         frame_ids = {f["id"] for f in frames}
         opened = len({i for i in ratings["visual"].get("inspected", []) if i in frame_ids})
+        tiled = len({i for i in tiles_seen(manifest) if i in frame_ids})
         coverage.append(f"{len(frames)} frames extracted over {clock(frames[0]['time_seconds'])}"
-                        f"-{clock(frames[-1]['time_seconds'])}, {opened} of them inspected")
+                        f"-{clock(frames[-1]['time_seconds'])}, {opened} of them inspected"
+                        + (f", {tiled} more only as contact-sheet tiles" if tiled else ""))
         bursts = sum((a.get("details", {}).get("dropped_by_reason") or {}).get("scene-burst", 0)
                      for a in of_kind(manifest, "frames"))
         if bursts:
@@ -1704,6 +2309,34 @@ def main() -> int:
     p.add_argument("--format", choices=["markdown", "json"], default="markdown",
                    help="json = the same disclosure as fields (schema disclosure/1).")
     p.set_defaults(fn=cmd_render)
+
+    p = sub.add_parser("view", help="Write one HTML file that shows the record: timeline, frames, text, claims.")
+    common(p)
+    p.add_argument("--output", help="Default: evidence_view.html beside the manifest.")
+    p.add_argument("--video", help="The video file for the player. Default: the recorded media file, if it is here.")
+    p.add_argument("--no-video", action="store_true", help="No player, even when the video is here.")
+    p.add_argument("--within", metavar="DIR",
+                   help="Read nothing outside this folder: a recorded file that lies elsewhere is treated as not "
+                        "there. For hosts that confine the tools to one work folder.")
+    p.add_argument("--link-pictures", action="store_true",
+                   help="Link the pictures beside the page instead of putting them inside it (smaller file; "
+                        "it then needs the pictures next to it).")
+    p.set_defaults(fn=cmd_view)
+
+    p = sub.add_parser("pack", help="Zip the view page, a copy of the manifest, the pictures used and the transcripts.")
+    common(p)
+    p.add_argument("--output", help="Default: review_pack.zip beside the manifest.")
+    p.add_argument("--include-video", action="store_true",
+                   help="Put the video in the pack too. Off by default: it can be large, and it can be private.")
+    p.add_argument("--video", help="With --include-video: the file to include. Default: the recorded media file.")
+    p.add_argument("--all-frames", action="store_true",
+                   help="Include every extracted picture, not only the ones opened or cited.")
+    p.add_argument("--within", metavar="DIR",
+                   help="Read nothing outside this folder: a recorded file that lies elsewhere is treated as not "
+                        "there. For hosts that confine the tools to one work folder.")
+    p.add_argument("--accept-findings", action="store_true",
+                   help="Pack even though a text in it looks like a local path, an email address or a key.")
+    p.set_defaults(fn=cmd_pack)
 
     p = sub.add_parser("lint", help="Check a hand-written disclosure block against the format.")
     p.add_argument("--file", required=True, help="A Markdown file containing the answer.")
