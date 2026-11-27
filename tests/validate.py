@@ -5452,7 +5452,7 @@ def _():
         proc = subprocess.run([sys.executable, "-I", "-B", "-c", loader] + [str(p) for p in OTHER_SCRIPTS], capture_output=True,
                               env=child_env)
         assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")[-400:]
-        assert len(OTHER_SCRIPTS) == 12 and json.loads(proc.stdout.decode("utf-8", "replace").strip().splitlines()[-1]) == []
+        assert len(OTHER_SCRIPTS) == 13 and json.loads(proc.stdout.decode("utf-8", "replace").strip().splitlines()[-1]) == []
         for script in OTHER_SCRIPTS:
             text = script.read_text(encoding="utf-8")
             assert text.index('os.environ.pop("__PYVENV_LAUNCHER__", None)') < text.index("if sys.version_info < (3, 9):"), script.name
@@ -5510,7 +5510,7 @@ def _():
         assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")[-400:]
         return json.loads(proc.stdout.decode("utf-8", "replace").strip().splitlines()[-1]), proc.stderr.decode("utf-8", "replace")
 
-    assert len(OTHER_SCRIPTS) == 12
+    assert len(OTHER_SCRIPTS) == 13       # v5.6: contact_sheet.py joined them
     for script in OTHER_SCRIPTS:                                           # transcribe_local.py among them
         got, err = old(script, "audio file.wav", "--language", "en")
         assert got["calls"] and got["calls"][0]["how"] == ("child" if os.name == "nt" else "execve"), (script.name, got)
@@ -6286,7 +6286,7 @@ def _():
                     bare.append((script.name, inside(node)))
     # the only launch that keeps the caller's own input: handing the whole script over to the private Python (Windows branch)
     assert sorted(set(inherited)) == [(p.name, "_continue_under") for p in OTHER_SCRIPTS], inherited
-    assert len(inherited) == 12 and launches >= 45, (len(inherited), launches)
+    assert len(inherited) == 13 and launches >= 45, (len(inherited), launches)
     # the only ffmpeg without -nostdin: the recording itself, which is stopped by "q" on a pipe of its own
     assert bare == [("record_browser_playback.py", "build_command")], bare
     source = (SCRIPTS / "record_browser_playback.py").read_text(encoding="utf-8")
